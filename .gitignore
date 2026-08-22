@@ -1,0 +1,22 @@
+# Build outputs
+bin/
+obj/
+artifacts/
+
+# IDE
+.vs/
+.idea/
+*.user
+*.suo
+
+# Test results
+TestResults/
+*.trx
+
+# Logs & local data
+*.log
+app-settings.json
+
+# OS
+Thumbs.db
+Desktop.ini

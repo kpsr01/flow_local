@@ -1,0 +1,295 @@
+<Window x:Class="FlowLocal.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="FlowLocal" Width="1020" Height="780" MinWidth="860" MinHeight="640"
+        WindowStartupLocation="CenterScreen" Background="{StaticResource BrushCanvas}"
+        FontFamily="{StaticResource FontBody}" TextOptions.TextFormattingMode="Ideal">
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="236" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <Border Grid.Column="0" Background="{StaticResource BrushNavRail}" BorderBrush="{StaticResource BrushStroke}" BorderThickness="0,0,1,0">
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Top" Margin="20,26,18,20">
+                    <StackPanel Orientation="Horizontal">
+                        <Border Width="34" Height="34" CornerRadius="9" Background="#20202A" BorderBrush="{StaticResource BrushStroke}" BorderThickness="1">
+                            <Canvas Width="18" Height="18" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <Rectangle Canvas.Left="1" Canvas.Top="6.5" Width="2.4" Height="5" RadiusX="1.2" RadiusY="1.2" Fill="{StaticResource BrushEmber}" />
+                                <Rectangle Canvas.Left="4.9" Canvas.Top="4" Width="2.4" Height="10" RadiusX="1.2" RadiusY="1.2" Fill="{StaticResource BrushEmber}" />
+                                <Rectangle Canvas.Left="8.8" Canvas.Top="1.5" Width="2.4" Height="15" RadiusX="1.2" RadiusY="1.2" Fill="{StaticResource BrushEmberHot}" />
+                                <Rectangle Canvas.Left="12.7" Canvas.Top="5" Width="2.4" Height="8" RadiusX="1.2" RadiusY="1.2" Fill="{StaticResource BrushEmber}" />
+                                <Rectangle Canvas.Left="16.6" Canvas.Top="7" Width="2.4" Height="4" RadiusX="1.2" RadiusY="1.2" Fill="{StaticResource BrushEmber}" />
+                            </Canvas>
+                        </Border>
+                        <StackPanel Margin="12,0,0,0" VerticalAlignment="Center">
+                            <TextBlock Text="FlowLocal" FontFamily="{StaticResource FontDisplay}" FontSize="17" FontWeight="SemiBold"
+                                       Foreground="{StaticResource BrushTextPrimary}" />
+                            <TextBlock Text="Local dictation" FontSize="11" Foreground="{StaticResource BrushTextTertiary}" Margin="0,-1,0,0" />
+                        </StackPanel>
+                    </StackPanel>
+                </StackPanel>
+
+                <TextBlock DockPanel.Dock="Bottom" x:Name="NavVersion" Margin="24,0,0,18"
+                           FontSize="11" Foreground="{StaticResource BrushTextTertiary}" />
+
+                <ListBox x:Name="NavList" Margin="10,4,10,0" SelectionChanged="Nav_SelectionChanged"
+                         Background="Transparent" BorderThickness="0" Padding="0"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                         AutomationProperties.Name="Settings sections">
+                    <ListBox.ItemContainerStyle>
+                        <Style TargetType="ListBoxItem">
+                            <Setter Property="Foreground" Value="{StaticResource BrushTextSecondary}" />
+                            <Setter Property="FontSize" Value="13" />
+                            <Setter Property="Cursor" Value="Hand" />
+                            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="ListBoxItem">
+                                        <Grid Margin="2,2">
+                                            <Border x:Name="Chrome" Background="Transparent" CornerRadius="8" Padding="12,9">
+                                                <ContentPresenter VerticalAlignment="Center" />
+                                            </Border>
+                                            <Rectangle x:Name="Indicator" Width="3" Height="16" RadiusX="1.5" RadiusY="1.5"
+                                                       Fill="{StaticResource BrushEmber}" HorizontalAlignment="Left"
+                                                       VerticalAlignment="Center" Visibility="Collapsed" />
+                                        </Grid>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="Chrome" Property="Background" Value="#0FFFFFFF" />
+                                                <Setter Property="Foreground" Value="{StaticResource BrushTextPrimary}" />
+                                            </Trigger>
+                                            <Trigger Property="IsSelected" Value="True">
+                                                <Setter TargetName="Chrome" Property="Background" Value="#1FFFFFFF" />
+                                                <Setter Property="Foreground" Value="{StaticResource BrushTextPrimary}" />
+                                                <Setter TargetName="Indicator" Property="Visibility" Value="Visible" />
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                    </ListBox.ItemContainerStyle>
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="{Binding Glyph}" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="14"
+                                           Width="22" VerticalAlignment="Center" />
+                                <TextBlock Text="{Binding Label}" Margin="10,0,0,0" VerticalAlignment="Center" FontWeight="Medium" />
+                            </StackPanel>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </DockPanel>
+        </Border>
+
+        <Grid Grid.Column="1">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+            <StackPanel Margin="38,26,38,6">
+                <TextBlock x:Name="PageTitle" Style="{StaticResource TitleText}" Text="General" />
+                <TextBlock x:Name="PageSubtitle" Style="{StaticResource SectionSub}" Margin="0,3,0,0" />
+            </StackPanel>
+            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="38,6,38,30">
+                <StackPanel>
+
+                    <Grid x:Name="PageGeneral">
+                        <Border Style="{StaticResource SectionCard}">
+                            <StackPanel>
+                                <TextBlock Style="{StaticResource SectionTitle}" Text="Dictation modes" />
+                                <TextBlock Style="{StaticResource SectionSub}" Margin="0,3,0,16"
+                                           Text="Choose how recording starts and ends." />
+                                <WrapPanel VerticalAlignment="Center">
+                                    <CheckBox x:Name="DoubleTapCheckBox" MinWidth="300" Margin="0,4,16,8"
+                                              Content="Hands-free double-tap recording"
+                                              AutomationProperties.HelpText="Two quick taps of the push-to-talk chord keep recording until you tap again or press Stop."/>
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                        <TextBlock Text="Double-tap window (ms)" Style="{StaticResource LabelText}" VerticalAlignment="Center" Margin="0,0,10,0" />
+                                        <TextBox x:Name="DoubleTapIntervalTextBox" Width="84" AutomationProperties.Name="Double-tap window in milliseconds"/>
+                                    </StackPanel>
+                                </WrapPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
+                                    <Button Style="{StaticResource AccentButton}" MinWidth="118" Content="_Save general" Click="SaveGeneral_Click"/>
+                                    <TextBlock x:Name="GeneralStatusText" Margin="16,0,0,0" VerticalAlignment="Center"
+                                               Style="{StaticResource LabelText}"
+                                               AutomationProperties.LiveSetting="Polite" AutomationProperties.Name="General settings status"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+
+                    <Grid x:Name="PageShortcuts" Visibility="Collapsed">
+                        <Border Style="{StaticResource SectionCard}">
+                            <StackPanel>
+                                <TextBlock Style="{StaticResource SectionTitle}" Text="Push-to-talk chord" />
+                                <TextBlock Style="{StaticResource SectionSub}" Margin="0,3,0,16"
+                                           Text="Hold every checked modifier together to dictate. Left and right variants are equivalent. Escape cancels while the chord is held." />
+                                <StackPanel Orientation="Horizontal">
+                                    <CheckBox x:Name="ModifierCtrlCheckBox" MinWidth="96" Content="_Ctrl" Margin="0,4,8,8"/>
+                                    <CheckBox x:Name="ModifierAltCheckBox" MinWidth="96" Content="A_lt" Margin="0,4,8,8"/>
+                                    <CheckBox x:Name="ModifierShiftCheckBox" MinWidth="96" Content="_Shift" Margin="0,4,8,8"/>
+                                    <CheckBox x:Name="ModifierWinCheckBox" MinWidth="96" Content="_Win" Margin="0,4,8,8"/>
+                                    <Button MinWidth="112" Height="32" Margin="16,2,0,0" Content="_Apply chord" Click="ApplyChord_Click"/>
+                                    <Button MinWidth="132" Height="32" Margin="8,2,0,0" Content="Reset to de_faults" Click="ResetChord_Click"/>
+                                </StackPanel>
+                                <TextBlock x:Name="ShortcutStatusText" Margin="0,14,0,0" Style="{StaticResource LabelText}"
+                                           AutomationProperties.LiveSetting="Polite" AutomationProperties.Name="Shortcut settings status"/>
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+
+                    <Grid x:Name="PageMicrophone" Visibility="Collapsed">
+                        <Border Style="{StaticResource SectionCard}">
+                            <StackPanel>
+                                <TextBlock Style="{StaticResource SectionTitle}" Text="Input device" />
+                                <TextBlock Style="{StaticResource SectionSub}" Margin="0,3,0,16"
+                                           Text="Follow the Windows default input device, or pin a specific microphone." />
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <CheckBox x:Name="FollowDefaultMicCheckBox" MinWidth="300" Margin="0,4,16,8"
+                                              Content="Follow the Windows default input device" Click="MicSettingChanged"/>
+                                    <ComboBox x:Name="MicDeviceComboBox" Width="380" AutomationProperties.Name="Pinned microphone device" SelectionChanged="MicSettingChanged"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
+                                    <Button MinWidth="126" Content="_Refresh devices" Click="RefreshMicDevices_Click"/>
+                                    <Button MinWidth="210" Margin="8,0,0,0" Content="Open Windows sound _settings" Click="OpenSoundSettings_Click"/>
+                                </StackPanel>
+                                <TextBlock x:Name="MicrophoneStatusText" Margin="0,14,0,0" Style="{StaticResource LabelText}"
+                                           AutomationProperties.LiveSetting="Polite" AutomationProperties.Name="Microphone settings status"/>
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+
+                    <Grid x:Name="PageStyles" Visibility="Collapsed">
+                        <StackPanel>
+                            <Border Style="{StaticResource SectionCard}">
+                                <StackPanel>
+                                    <TextBlock Style="{StaticResource SectionTitle}" Text="Writing style detection" />
+                                    <TextBlock Style="{StaticResource SectionSub}" Margin="0,3,0,16"
+                                               Text="FlowLocal classifies the active application and website to pick a writing style." />
+                                    <CheckBox x:Name="WebsiteDetectionCheckBox" Margin="0,4,0,10" Content="_Detect website domains" Click="SettingsChanged_Click"
+                                              ToolTip="Uses only the normalized domain; full URLs are never shown or stored."
+                                              AutomationProperties.HelpText="Uses only the normalized domain; full URLs are never shown or stored." />
+                                    <CheckBox x:Name="StyleClassificationCheckBox" Margin="0,0,0,16" Content="Choose _writing style for the current application" Click="SettingsChanged_Click" />
+                                    <TextBlock Text="Universal fallback category" Style="{StaticResource LabelText}" />
+                                    <ComboBox x:Name="FallbackCategoryComboBox" Width="230" Margin="0,8,0,22" HorizontalAlignment="Left" SelectionChanged="SettingsChanged_Click"
+                                              AutomationProperties.Name="Universal fallback category"/>
+
+                                    <TextBlock Style="{StaticResource SectionTitle}" Text="Current target" />
+                                    <Grid Margin="0,12,0,14">
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                        <Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
+                                        <TextBlock Grid.Row="0" Style="{StaticResource LabelText}" Text="Executable"/><TextBlock Grid.Row="0" Grid.Column="1" x:Name="ExecutableText" Style="{StaticResource ValueText}" Text="Not tested"/>
+                                        <TextBlock Grid.Row="1" Style="{StaticResource LabelText}" Text="Application"/><TextBlock Grid.Row="1" Grid.Column="1" x:Name="ApplicationText" Style="{StaticResource ValueText}" Text="—"/>
+                                        <TextBlock Grid.Row="2" Style="{StaticResource LabelText}" Text="Domain"/><TextBlock Grid.Row="2" Grid.Column="1" x:Name="DomainText" Style="{StaticResource ValueText}" Text="—"/>
+                                        <TextBlock Grid.Row="3" Style="{StaticResource LabelText}" Text="Category"/><TextBlock Grid.Row="3" Grid.Column="1" x:Name="CategoryText" Style="{StaticResource ValueText}" Text="—"/>
+                                        <TextBlock Grid.Row="4" Style="{StaticResource LabelText}" Text="Tone / structure"/><TextBlock Grid.Row="4" Grid.Column="1" x:Name="StyleText" Style="{StaticResource ValueText}" Text="—"/>
+                                        <TextBlock Grid.Row="5" Style="{StaticResource LabelText}" Text="Source"/><TextBlock Grid.Row="5" Grid.Column="1" x:Name="SourceText" Style="{StaticResource ValueText}" Text="—"/>
+                                        <TextBlock Grid.Row="6" Style="{StaticResource LabelText}" Text="Rule"/><TextBlock Grid.Row="6" Grid.Column="1" x:Name="RuleText" Style="{StaticResource ValueText}" Text="—"/>
+                                        <TextBlock Grid.Row="7" Style="{StaticResource LabelText}" Text="Detection error"/><TextBlock Grid.Row="7" Grid.Column="1" x:Name="ErrorText" Style="{StaticResource ValueText}" Text="None" AutomationProperties.LiveSetting="Polite" AutomationProperties.Name="Application style detection error"/>
+                                    </Grid>
+                                    <Button Style="{StaticResource AccentButton}" Width="170" Height="36" HorizontalAlignment="Left" Margin="0,0,0,24" Content="_Test current target" Click="TestCurrentTarget_Click"/>
+
+                                    <TextBlock Style="{StaticResource SectionTitle}" Text="Local category overrides" />
+                                    <TextBlock Style="{StaticResource SectionSub}" Margin="0,4,0,12"
+                                               Text="Enter an executable name or normalized domain. Full URLs are rejected."/>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="160"/><ColumnDefinition Width="*"/><ColumnDefinition Width="170"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                        <ComboBox x:Name="OverrideKindComboBox" Grid.Column="0" Height="32" Margin="0,0,8,0" SelectedIndex="0" AutomationProperties.Name="Override type"><ComboBoxItem Content="Executable" Tag="Executable"/><ComboBoxItem Content="Domain" Tag="Domain"/></ComboBox>
+                                        <TextBox x:Name="OverrideKeyTextBox" Grid.Column="1" Height="32" Margin="0,0,8,0" AutomationProperties.Name="Override executable or domain" AutomationProperties.HelpText="Enter an executable name or normalized domain. Full URLs are rejected."/>
+                                        <ComboBox x:Name="OverrideCategoryComboBox" Grid.Column="2" Height="32" Margin="0,0,8,0" AutomationProperties.Name="Override category"/>
+                                        <Button Grid.Column="3" MinWidth="76" Height="32" Content="_Save" Click="SaveOverride_Click"/>
+                                    </Grid>
+                                    <ListBox x:Name="OverridesListBox" Height="120" Margin="0,12,0,10" AutomationProperties.Name="Saved application style overrides"/>
+                                    <Button Width="160" Height="32" HorizontalAlignment="Left" Content="_Remove selected" Click="RemoveOverride_Click"/>
+                                    <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
+                                        <Button Width="140" Height="34" Content="Reset _defaults" Click="ResetDefaults_Click"/>
+                                        <TextBlock x:Name="SettingsStatusText" Margin="16,0,0,0" VerticalAlignment="Center" Style="{StaticResource LabelText}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" AutomationProperties.Name="Application style settings status"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </Grid>
+
+                    <Grid x:Name="PagePrivacy" Visibility="Collapsed">
+                        <Border x:Name="HistoryGroupBox" Style="{StaticResource SectionCard}">
+                            <StackPanel>
+                                <TextBlock Style="{StaticResource SectionTitle}" Text="History" />
+                                <TextBlock Style="{StaticResource SectionSub}" Margin="0,3,0,14"
+                                           Text="Everything below stays on this machine." />
+                                <Grid Margin="0,0,0,14">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="220"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                    <TextBox x:Name="HistorySearchTextBox" Height="34" Margin="0,0,10,0" AutomationProperties.Name="Search raw and cleaned transcripts" AutomationProperties.HelpText="Press Enter or activate Search to apply the history filters." KeyDown="HistorySearch_KeyDown"/>
+                                    <CheckBox x:Name="HistoryFailedOnlyCheckBox" Grid.Column="1" Margin="0,8,14,0" VerticalAlignment="Center" Content="_Failed only" Click="HistoryFilterChanged_Click"/>
+                                    <ComboBox x:Name="HistoryApplicationComboBox" Grid.Column="2" Height="34" Margin="0,0,8,0" AutomationProperties.Name="Filter history by application" SelectionChanged="HistoryFilterChanged_Click"/>
+                                    <Button Grid.Column="3" MinWidth="84" Height="34" Content="_Search" Click="HistoryFilterChanged_Click"/>
+                                </Grid>
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="330"/><ColumnDefinition Width="18"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                    <ListBox x:Name="HistoryListBox" Height="340" SelectionChanged="HistorySelectionChanged" AutomationProperties.Name="Dictation history grouped by day">
+                                        <ListBox.GroupStyle><GroupStyle><GroupStyle.HeaderTemplate><DataTemplate><TextBlock Margin="4,10,2,4" FontWeight="SemiBold" Foreground="{StaticResource BrushTextSecondary}" Text="{Binding Name}"/></DataTemplate></GroupStyle.HeaderTemplate></GroupStyle></ListBox.GroupStyle>
+                                        <ListBox.ItemTemplate><DataTemplate><StackPanel Margin="2"><TextBlock FontWeight="SemiBold" Foreground="{StaticResource BrushTextPrimary}" Text="{Binding Summary}" TextTrimming="CharacterEllipsis"/><TextBlock Foreground="{StaticResource BrushTextTertiary}" Margin="0,2,0,0" FontSize="11.5" Text="{Binding Details}" TextTrimming="CharacterEllipsis"/></StackPanel></DataTemplate></ListBox.ItemTemplate>
+                                    </ListBox>
+                                    <StackPanel Grid.Column="2">
+                                        <TextBlock Text="Raw transcript" Style="{StaticResource LabelText}"/><TextBox x:Name="HistoryRawTextBox" Height="92" Margin="0,6,0,14" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" Background="#17171C" AutomationProperties.Name="Selected raw transcript"/>
+                                        <TextBlock Text="Cleaned transcript" Style="{StaticResource LabelText}"/><TextBox x:Name="HistoryCleanedTextBox" Height="92" Margin="0,6,0,14" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" Background="#17171C" AutomationProperties.Name="Selected cleaned transcript"/>
+                                        <TextBlock x:Name="HistoryMetadataText" Foreground="{StaticResource BrushTextSecondary}" TextWrapping="Wrap" AutomationProperties.Name="Selected history metadata"/>
+                                    </StackPanel>
+                                </Grid>
+                                <WrapPanel x:Name="HistoryActionPanel" Margin="0,14,0,0" IsEnabled="False">
+                                    <Button Margin="0,0,8,8" Content="Copy _raw" Click="HistoryAction_Click" Tag="CopyRaw"/><Button Margin="0,0,8,8" Content="Copy _cleaned" Click="HistoryAction_Click" Tag="CopyCleaned"/><Button Margin="0,0,8,8" Content="_Paste cleaned" Click="HistoryAction_Click" Tag="Paste"/>
+                                    <Button Margin="0,0,8,8" Content="Retry speech _recognition" Click="HistoryAction_Click" Tag="RetryAsr"/><Button Margin="0,0,8,8" Content="Retry clean_up" Click="HistoryAction_Click" Tag="RetryCleanup"/><Button Margin="0,0,8,8" Content="Retry _insertion" Click="HistoryAction_Click" Tag="RetryInsertion"/>
+                                    <Button Margin="0,0,8,8" Content="Play recording" Click="HistoryAction_Click" Tag="Play"/><Button Margin="0,0,8,8" Content="Export recording" Click="HistoryAction_Click" Tag="Export"/><Button Margin="0,0,8,8" Content="Open recording location" Click="HistoryAction_Click" Tag="OpenLocation"/>
+                                    <Button Margin="0,0,0,8" Content="_Delete selected" Click="DeleteSelectedHistory_Click"/>
+                                </WrapPanel>
+                                <TextBlock x:Name="HistoryStatusText" Margin="0,10,0,0" Style="{StaticResource LabelText}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" AutomationProperties.Name="History operation status"/>
+
+                                <Separator Style="{StaticResource SeparatorLine}" Margin="0,18,0,18"/>
+                                <TextBlock Style="{StaticResource SectionTitle}" Text="Privacy and retention" />
+                                <CheckBox x:Name="SaveAudioCheckBox" Margin="0,14,0,10" Content="Save recordings for retry and playback" Click="RetentionChanged_Click" AutomationProperties.HelpText="When enabled, audio is stored locally according to the recording retention period."/>
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                    <TextBlock Width="190" VerticalAlignment="Center" Style="{StaticResource LabelText}" Text="Recording retention"/>
+                                    <ComboBox x:Name="AudioRetentionComboBox" Width="170" SelectionChanged="RetentionChanged_Click" AutomationProperties.Name="Recording retention period"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,14">
+                                    <TextBlock Width="190" VerticalAlignment="Center" Style="{StaticResource LabelText}" Text="Transcript retention"/>
+                                    <ComboBox x:Name="TranscriptRetentionComboBox" Width="170" SelectionChanged="RetentionChanged_Click" AutomationProperties.Name="Transcript retention period"/>
+                                </StackPanel>
+                                <CheckBox x:Name="NormalizedDomainsCheckBox" IsChecked="True" IsEnabled="False" Content="Store normalized domains only" ToolTip="FlowLocal stores only normalized domains when website detection is enabled." AutomationProperties.HelpText="FlowLocal stores only normalized domains when website detection is enabled."/>
+                                <CheckBox x:Name="FullUrlsCheckBox" Margin="0,8,0,18" IsChecked="False" IsEnabled="False" Content="Store full URLs (unsupported)" ToolTip="Full URL storage is disabled to protect privacy." AutomationProperties.HelpText="Full URL storage is disabled to protect privacy."/>
+                                <StackPanel Orientation="Horizontal">
+                                    <Button Margin="0,0,8,0" Content="_Clear recordings" Click="ClearRecordings_Click"/><Button Margin="0,0,8,0" Content="Delete _all history" Click="DeleteAllHistory_Click"/><Button Content="_Open data directory" Click="OpenDataDirectory_Click"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+
+                    <Grid x:Name="PageDiagnostics" Visibility="Collapsed">
+                        <Border Style="{StaticResource SectionCard}">
+                            <StackPanel>
+                                <TextBlock Style="{StaticResource SectionTitle}" Text="Models and diagnostics" />
+                                <TextBlock Style="{StaticResource SectionSub}" Margin="0,3,0,16"
+                                           Text="Live view of local model readiness and runtime facts. No transcripts leave this machine." />
+                                <Grid Margin="0,4,0,14">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="190"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
+                                    <TextBlock Text="Application version" Style="{StaticResource LabelText}"/><TextBlock Grid.Column="1" x:Name="VersionText" Style="{StaticResource ValueText}" Text="—"/>
+                                    <TextBlock Grid.Row="1" Text="Runtime" Style="{StaticResource LabelText}"/><TextBlock Grid.Row="1" Grid.Column="1" x:Name="RuntimeText" Style="{StaticResource ValueText}" Text="—"/>
+                                    <TextBlock Grid.Row="2" Text="ASR model" Style="{StaticResource LabelText}"/><TextBlock Grid.Row="2" Grid.Column="1" x:Name="AsrModelText" Style="{StaticResource ValueText}" Text="—"/>
+                                    <TextBlock Grid.Row="3" Text="ASR state" Style="{StaticResource LabelText}"/><TextBlock Grid.Row="3" Grid.Column="1" x:Name="AsrStateText" Style="{StaticResource ValueText}" Text="—"/>
+                                    <TextBlock Grid.Row="4" Text="Cleanup backend" Style="{StaticResource LabelText}"/><TextBlock Grid.Row="4" Grid.Column="1" x:Name="CleanupBackendText" Style="{StaticResource ValueText}" Text="—"/>
+                                    <TextBlock Grid.Row="5" Text="Cleanup model path" Style="{StaticResource LabelText}"/><TextBlock Grid.Row="5" Grid.Column="1" x:Name="CleanupPathText" Style="{StaticResource ValueText}" Text="—" TextTrimming="CharacterEllipsis"/>
+                                    <TextBlock Grid.Row="6" Text="Microphone mode" Style="{StaticResource LabelText}"/><TextBlock Grid.Row="6" Grid.Column="1" x:Name="MicModeText" Style="{StaticResource ValueText}" Text="—"/>
+                                </Grid>
+                                <Button MinWidth="110" Content="_Refresh" Click="RefreshDiagnostics_Click"/>
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+
+                </StackPanel>
+            </ScrollViewer>
+        </Grid>
+    </Grid>
+</Window>

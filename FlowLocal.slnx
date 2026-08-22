@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="src/FlowLocal.Core/FlowLocal.Core.csproj" />
+  <Project Path="src/FlowLocal.App/FlowLocal.App.csproj" />
+  <Project Path="tests/FlowLocal.Core.Tests/FlowLocal.Core.Tests.csproj" />
+</Solution>

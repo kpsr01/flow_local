@@ -42,4 +42,41 @@ public sealed class DictationPromptAdapterTests
         Assert.Contains("numbered lists", prompt);
         Assert.Contains("Output only the cleaned text", prompt);
     }
-}
+
+    [Fact]
+    public void SystemPrompt_CoversWisprFlowPostProcessingFeatures()
+    {
+        var prompt = DictationPromptAdapter.SystemPrompt;
+
+        // Spoken punctuation commands become symbols.
+        Assert.Contains("spoken punctuation into symbols", prompt);
+        // Spoken layout commands create lines/paragraphs.
+        Assert.Contains("new paragraph", prompt);
+        // Grammar cleanup.
+        Assert.Contains("Fix grammar", prompt);
+        // Context-aware formatting: email, chat (no trailing period), code/terminal minimal edits.
+        Assert.Contains("Context email adds greeting and sign-off", prompt);
+        Assert.Contains("Context chat stays conversational and omits the period", prompt);
+        Assert.Contains("add no punctuation that was not spoken", prompt);
+    }
+
+    [Fact]
+    public void Build_MapsCategoryToContextControlValues()
+    {
+        Assert.Contains("[Context: chat]", DictationPromptAdapter.Build(
+            new RawTranscript("hey"),
+            new TranscriptStyle("PersonalMessaging", "casual", "conversational prose")));
+        Assert.Contains("[Context: chat]", DictationPromptAdapter.Build(
+            new RawTranscript("hey"),
+            TranscriptStyleResolver.Resolve(OutputContextCategory.WorkMessaging)));
+        Assert.Contains("[Context: code]", DictationPromptAdapter.Build(
+            new RawTranscript("x"),
+            TranscriptStyleResolver.Resolve(OutputContextCategory.CodeEditor)));
+        Assert.Contains("[Context: terminal]", DictationPromptAdapter.Build(
+            new RawTranscript("x"),
+            TranscriptStyleResolver.Resolve(OutputContextCategory.Terminal)));
+        Assert.Contains("[Context: general]", DictationPromptAdapter.Build(
+            new RawTranscript("one two three"),
+            new TranscriptStyle("Unknown", "unsupported", "Unknown")));
+    }
+ }

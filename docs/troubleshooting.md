@@ -2,34 +2,33 @@
 
 ## Initialization overlay reports a failure
 
-FlowLocal enables dictation only after history, Foundry Local/Nemotron, and S1-mini initialize. Read the full overlay message, correct the named prerequisite, then exit from the tray menu and restart; the current UI has no general initialization retry command.
+FlowLocal enables dictation only after history, the Moonshine speech model, and the cleanup model initialize. Read the full overlay message, correct the named prerequisite, then exit from the tray menu and restart; the current UI has no general initialization retry command.
 
-### Foundry Local is not ready or model alias is unavailable
+### Speech model is missing or not ready
 
-- Install/repair Foundry Local separately using Microsoft's current Windows instructions and confirm its own readiness tool works.
-- Confirm the machine is online for the first execution-provider and model download.
-- FlowLocal requests catalog alias `nemotron-speech-streaming-en-0.6b`; it cannot use an arbitrary local folder. An installed Foundry catalog that lacks that alias is incompatible with the current build.
-- Ensure the Windows account can write to Foundry Local's cache. Foundry owns that location, not FlowLocal.
-- Restart FlowLocal after Foundry repair. Do not substitute `FakeAsrService`; it is not wired into production startup.
+- Confirm the machine is online for the first model download, or that `%LOCALAPPDATA%\FlowLocal\Models\moonshine-streaming-medium` contains `frontend.onnx`, `encoder.onnx`, `adapter.onnx`, `cross_kv.onnx`, `decoder_kv.onnx`, and `tokenizer.json`.
+- If a download was interrupted, delete the `.download` partial files (or the whole folder) and restart FlowLocal so the worker fetches them again.
+- Ensure the Windows account can write to `%LOCALAPPDATA%\FlowLocal\Models`. FlowLocal owns that directory.
+- First initialization loads five ONNX sessions and can take a few minutes on some machines. Do not substitute `FakeAsrService`; it is not wired into production startup.
 
-### “Set FLOWLOCAL_S1_MODEL_PATH…” or model file not found
+### “Set FLOWLOCAL_CLEANUP_MODEL_PATH…” or cleanup model not found
 
 Check the variable in the same account/environment used to launch FlowLocal:
 
 ```powershell
-[Environment]::GetEnvironmentVariable("FLOWLOCAL_S1_MODEL_PATH", "User")
-Test-Path $env:FLOWLOCAL_S1_MODEL_PATH
+[Environment]::GetEnvironmentVariable("FLOWLOCAL_CLEANUP_MODEL_PATH", "User")
+Test-Path $env:FLOWLOCAL_CLEANUP_MODEL_PATH
 ```
 
-If the first command has a path but `$env:` is empty, start a new shell or restart Explorer before launching the app. The value must be a full path to one readable GGUF file, not a directory. FlowLocal does not download S1-mini or search a `Models` folder.
+If the variable is unset, FlowLocal looks for a `.gguf` file in `%LOCALAPPDATA%\FlowLocal\Models` (where the installer downloads it). If the first command has a path but `$env:` is empty, start a new shell or restart Explorer before launching the app. The value must be a full path to one readable GGUF file, not a directory.
 
-### S1-mini fails to load
+### Cleanup model fails to load
 
-The file may be incomplete, incompatible with LLamaSharp/llama.cpp, or too large for available memory. Re-download a compatible `superwhisper/s1-mini` GGUF from a trusted source; the project recommendation is Q4_K_M. The current backend is CPU-only and offers no GPU/backend selector.
+The file may be incomplete or incompatible with LLamaSharp/llama.cpp, or too large for available memory. Re-download a compatible LiquidAI LFM2.5-350M GGUF; the installer uses the QAD Q4_0 quantization. Inference runs on CPU by default; setting `FLOWLOCAL_LFM_GPU=1` enables experimental full GPU offload with automatic fallback to CPU.
 
 ### Speech recognition fails or the app previously crashed while transcribing
 
-All Foundry Local model code runs in the separate `FlowLocal.AsrWorker.exe` process. If recognition stalls, the worker is terminated and respawned automatically, and the dictation fails with a typed error while keeping the saved recording for retry. The worker also prefers a non-CUDA execution-provider variant when available because the CUDA build of the streaming Nemotron model aborts natively on some consumer GPUs. If every session still reports `AsrFailed`, check `foundry status`, confirm the model is cached with `foundry cache ls`, and verify a microphone is capturing (Settings > Microphone).
+All Moonshine model code runs in the separate `FlowLocal.AsrWorker.exe` process. If recognition stalls, the worker is terminated and respawned automatically, and the dictation fails with a typed error while keeping the saved recording for retry. If every session still reports `AsrFailed`, confirm the six model files above exist and verify a microphone is capturing (Settings > Microphone).
 
 ## Microphone problems
 
@@ -70,7 +69,7 @@ If `%LOCALAPPDATA%\FlowLocal\application-styles.json` is malformed or unreadable
 
 ## Cleanup output is unchanged or unsuitable
 
-If S1-mini throws or its output fails validation, FlowLocal retries once and then inserts the raw ASR transcript while recording `CleanupFailed`. This is deliberate data-preserving fallback, not proof that cleanup succeeded. Inspect the History entry's raw/cleaned text and error, confirm the correct target classification, and verify the configured GGUF. S1-mini is constrained to transcript cleanup; it is not intended to answer or execute dictated prompts.
+If the cleanup model throws or its output fails validation, FlowLocal retries once and then inserts the raw ASR transcript while recording `CleanupFailed`. This is deliberate data-preserving fallback, not proof that cleanup succeeded. Inspect the History entry's raw/cleaned text and error, confirm the correct target classification, and verify the configured GGUF. The cleanup model is constrained to transcript cleanup; it is not intended to answer or execute dictated prompts.
 
 ## Text is not inserted
 

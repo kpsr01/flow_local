@@ -315,7 +315,7 @@ public sealed class DictationController : IDisposable
             if (_history is not null) await _history.ApplyRetentionAsync(DateTimeOffset.UtcNow, CancellationToken.None);
             LogLifecycle(_entry);
             await _overlay.Dispatcher.InvokeAsync(_overlay.ShowCompleted);
-            Reset(hideOverlay: false);
+            Reset(returnToIdle: false);
         }
         catch (OperationCanceledException) when (GetSessionCancellationToken().IsCancellationRequested) { }
         catch (Exception ex) { await FailAsync(ex); }
@@ -497,7 +497,9 @@ public sealed class DictationController : IDisposable
         lock (_sessionCancellationLock) _sessionCancellation?.Cancel();
     }
 
-    private void Reset(bool hideOverlay = true)
+    /// <summary>Tears the session down. By default the overlay returns to its idle pill;
+    /// pass false when the caller manages the overlay itself (e.g. "Completed" display).</summary>
+    private void Reset(bool returnToIdle = true)
     {
         CloseRecording();
         AbortReleaseDeferral();
@@ -511,7 +513,7 @@ public sealed class DictationController : IDisposable
         _sessionOptions = null;
         _asrFailure = null;
         _entry = null;
-        if (hideOverlay) _overlay.Dispatcher.Invoke(_overlay.HideOverlay);
+        if (returnToIdle) _overlay.Dispatcher.Invoke(_overlay.ShowReady);
     }
 
     public void Dispose()

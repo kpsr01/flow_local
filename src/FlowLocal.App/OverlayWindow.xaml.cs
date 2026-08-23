@@ -28,8 +28,17 @@ public partial class OverlayWindow : Window
     private const int GwlExStyle = -20;
     private const int WsExNoActivate = 0x08000000;
     private const int WsExToolWindow = 0x00000080;
-    private const double DefaultBottomGap = 16.0;
+    private const double DefaultBottomGap = 6.0;
     private const double ScreenEdgeMargin = 10.0;
+    private const double ShadowInset = 24.0;
+    private static readonly System.Windows.Media.SolidColorBrush PillBorderBrush = CreatePillBorderBrush();
+
+    private static System.Windows.Media.SolidColorBrush CreatePillBorderBrush()
+    {
+        var brush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(0xB3, 0xFF, 0x6B, 0x3D));
+        brush.Freeze(); // Shareable across dispatchers (tests create windows on multiple STA threads).
+        return brush;
+    }
 
     private static readonly double[] BarMultipliers = [0.45, 0.72, 1.0, 0.72, 0.45];
     private const double BarMinHeight = 4.0;
@@ -45,11 +54,12 @@ public partial class OverlayWindow : Window
     private DateTimeOffset _recordingStartedAt = DateTimeOffset.UtcNow;
     private long _lastLevelUpdateTicks;
     private float _latestLevel;
-    private Storyboard? _activePulse;
     private Storyboard? _activeThinking;
     private PillMode _mode = PillMode.Mini;
     private bool _listeningVisualsActive;
     private bool _placed;
+    private double _anchorX;
+    private double _anchorBottomY;
 
     public event EventHandler? RetryRequested;
     public event EventHandler? OpenHistoryRequested;
@@ -97,7 +107,7 @@ public partial class OverlayWindow : Window
         };
     }
 
-    public void ShowInitializing() { SetStatus("Initializing Foundry Local"); EnterMode(PillMode.Status); }
+    public void ShowInitializing() { SetStatus("Initializing speech model"); EnterMode(PillMode.Status); }
 
     public void ShowModelSetup() { SetStatus("Preparing speech model…"); EnterMode(PillMode.Status); }
 
@@ -180,9 +190,10 @@ public partial class OverlayWindow : Window
 
     public void ShowOverlay()
     {
+        Topmost = true;
+        if (_placed && IsVisible) return; // Already docked — mode changes morph in place.
         PlaceInWorkArea();
         Show();
-        Topmost = true;
         PlayIntro();
     }
 
@@ -252,8 +263,23 @@ public partial class OverlayWindow : Window
         _completedHideClock.Stop();
         _hintHideClock.Stop();
 
-        MiniDot.Visibility = mode == PillMode.Mini ? Visibility.Visible : Visibility.Collapsed;
+        // Idle pill is plain until hover — the mic glyph only appears via Root_MouseEnter.
+        MiniDot.Visibility = Visibility.Collapsed;
         ActiveRow.Visibility = mode == PillMode.Mini ? Visibility.Collapsed : Visibility.Visible;
+        // One pill identity in every state: same radius + ember outline, so expanding
+        // never looks like a different popup. Idle just enforces the resting footprint.
+        Root.CornerRadius = new CornerRadius(14);
+        Root.BorderBrush = PillBorderBrush;
+        if (mode == PillMode.Mini)
+        {
+            Root.MinWidth = 68;
+            Root.MinHeight = 24;
+        }
+        else
+        {
+            Root.MinWidth = 0;
+            Root.MinHeight = 0;
+        }
 
         var listening = mode == PillMode.Listening;
         CancelButton.Visibility = listening ? Visibility.Visible : Visibility.Collapsed;
@@ -271,7 +297,6 @@ public partial class OverlayWindow : Window
             : Visibility.Collapsed;
 
         if (!listening) StopWaveAndClocks();
-        if (mode == PillMode.Mini) StartPulse(); else StopPulse();
         if (mode == PillMode.Processing) StartThinking(); else StopThinking();
         if (changed && wasVisible) PlayMorph(oldWidth, oldHeight);
     }
@@ -289,31 +314,18 @@ public partial class OverlayWindow : Window
         if (Math.Abs(newWidth - oldWidth) < 2 && Math.Abs(newHeight - oldHeight) < 2) return;
         if (!MotionAllowed()) return;
 
-        var duration = new Duration(TimeSpan.FromMilliseconds(190));
+        var duration = new Duration(TimeSpan.FromMilliseconds(240));
         var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
         var scaleX = new DoubleAnimation(1, duration) { EasingFunction = ease };
         var scaleY = new DoubleAnimation(1, duration) { EasingFunction = ease };
-        RootScale.ScaleX = Math.Min(oldWidth / newWidth, 3);
-        RootScale.ScaleY = Math.Min(oldHeight / newHeight, 3);
+        // Start near the old footprint (clamped) instead of the exact ratio, so
+        // big jumps like idle→recording grow outward instead of popping from a sliver.
+        RootScale.ScaleX = Math.Clamp(oldWidth / newWidth, 0.7, 1.3);
+        RootScale.ScaleY = Math.Clamp(oldHeight / newHeight, 0.7, 1.3);
         RootScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty, scaleX);
         RootScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleYProperty, scaleY);
     }
 
-    private void StopPulse()
-    {
-        _activePulse?.Remove(this);
-        _activePulse = null;
-        MiniDot.Opacity = 1;
-        MiniDotScale.ScaleX = MiniDotScale.ScaleY = 1;
-    }
-
-    private void StartPulse()
-    {
-        StopPulse();
-        if (!MotionAllowed()) return;
-        _activePulse = (Storyboard)Resources["PulseStoryboard"];
-        _activePulse.Begin(this, true);
-    }
 
     private void StartThinking()
     {
@@ -336,10 +348,7 @@ public partial class OverlayWindow : Window
 
     private void StopAllMotion()
     {
-        _listeningVisualsActive = false;
-        StopWaveAndClocks();
         StopThinking();
-        StopPulse();
         _completedHideClock.Stop();
         _hintHideClock.Stop();
     }
@@ -413,13 +422,6 @@ public partial class OverlayWindow : Window
         }
     }
 
-    private (double Width, double Height) EstimatedSize()
-    {
-        var width = ActualWidth > 1 ? ActualWidth : Root.ActualWidth + 48;
-        var height = ActualHeight > 1 ? ActualHeight : Root.ActualHeight + 48;
-        return (Math.Max(width, 64), Math.Max(height, 56));
-    }
-
     private Rect WorkAreaInDips(System.Drawing.Rectangle physicalArea, (double X, double Y) dpi)
     {
         return new Rect(
@@ -429,31 +431,39 @@ public partial class OverlayWindow : Window
             physicalArea.Height / dpi.Y);
     }
 
-    private System.Drawing.Rectangle ScreenAreaFor(double dipLeft, double dipTop, double width, double height)
-    {
-        var (sx, sy) = DpiScale();
-        var center = new System.Drawing.Point(
-            (int)((dipLeft + width / 2) * sx), (int)((dipTop + height / 2) * sy));
-        return System.Windows.Forms.Screen.FromPoint(center).WorkingArea;
-    }
+    private Rect _placementBounds;
 
     private void PlaceInWorkArea()
     {
-        var (width, height) = EstimatedSize();
         var cursor = System.Windows.Forms.Cursor.Position;
         var (sx, sy) = DpiScale();
         var area = WorkAreaInDips(System.Windows.Forms.Screen.FromPoint(cursor).WorkingArea, (sx, sy));
+        _placementBounds = area;
 
-        // Pinned placement: bottom-center of the work area, always.
-        var left = area.Left + (area.Width - width) / 2;
-        var top = area.Bottom - height - DefaultBottomGap;
-
-        var bounds = WorkAreaInDips(ScreenAreaFor(left, top, width, height), (sx, sy));
-        Left = Math.Clamp(left, bounds.Left + ScreenEdgeMargin, Math.Max(bounds.Left + ScreenEdgeMargin, bounds.Right - width - ScreenEdgeMargin));
-        Top = Math.Clamp(top, bounds.Top + ScreenEdgeMargin, Math.Max(bounds.Top + ScreenEdgeMargin, bounds.Bottom - height - ScreenEdgeMargin));
+        // Anchor: center-X of the work area, visible pill bottom DefaultBottomGap
+        // above the taskbar. ShadowInset compensates the transparent window margin,
+        // so the drawn border — not the invisible window edge — hugs the taskbar.
+        // Independent of window size, so startup (before first layout) is exact.
+        _anchorX = area.Left + area.Width / 2;
+        _anchorBottomY = area.Bottom - DefaultBottomGap + ShadowInset;
         _placed = true;
+        SnapToAnchor();
     }
 
+    private void SnapToAnchor()
+    {
+        Left = Math.Clamp(_anchorX - ActualWidth / 2,
+            _placementBounds.Left + ScreenEdgeMargin,
+            Math.Max(_placementBounds.Left + ScreenEdgeMargin, _placementBounds.Right - ActualWidth - ScreenEdgeMargin));
+        Top = _anchorBottomY - ActualHeight;
+    }
+
+
+    private void OverlayWindow_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (!_placed) return;
+        SnapToAnchor();
+    }
     private void Root_MouseEnter(object sender, System.Windows.Input.MouseEventArgs e)
     {
         if (_mode != PillMode.Mini) return;

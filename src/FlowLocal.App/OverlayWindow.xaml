@@ -6,7 +6,7 @@
         ResizeMode="NoResize" ShowInTaskbar="False" ShowActivated="False" Topmost="True"
         AllowsTransparency="True" Background="Transparent" Focusable="False" IsTabStop="False"
         automation:AutomationProperties.Name="FlowLocal dictation status"
-        WindowStartupLocation="Manual">
+        WindowStartupLocation="Manual" SizeChanged="OverlayWindow_SizeChanged">
     <Window.Resources>
         <Storyboard x:Key="IntroStoryboard">
             <DoubleAnimation Storyboard.TargetName="Root"
@@ -19,17 +19,6 @@
                     <CubicEase EasingMode="EaseOut" />
                 </DoubleAnimation.EasingFunction>
             </DoubleAnimation>
-        </Storyboard>
-        <Storyboard x:Key="PulseStoryboard" RepeatBehavior="Forever" AutoReverse="True">
-            <DoubleAnimation Storyboard.TargetName="MiniDotScale"
-                             Storyboard.TargetProperty="ScaleX"
-                             From="1" To="1.3" Duration="0:0:1.4" />
-            <DoubleAnimation Storyboard.TargetName="MiniDotScale"
-                             Storyboard.TargetProperty="ScaleY"
-                             From="1" To="1.3" Duration="0:0:1.4" />
-            <DoubleAnimation Storyboard.TargetName="MiniDot"
-                             Storyboard.TargetProperty="Opacity"
-                             From="0.85" To="0.45" Duration="0:0:1.4" />
         </Storyboard>
         <Storyboard x:Key="ThinkingStoryboard" RepeatBehavior="Forever">
             <DoubleAnimation Storyboard.TargetProperty="Opacity"
@@ -113,11 +102,7 @@
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
                 <TextBlock x:Name="MiniDot" Text="&#xE720;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
                            FontSize="14" Foreground="#FFFF6B3D" VerticalAlignment="Center" Visibility="Collapsed"
-                           automation:AutomationProperties.Name="FlowLocal ready - click to dictate">
-                    <TextBlock.RenderTransform>
-                        <ScaleTransform x:Name="MiniDotScale" />
-                    </TextBlock.RenderTransform>
-                </TextBlock>
+                           automation:AutomationProperties.Name="FlowLocal ready - click to dictate" />
             </StackPanel>
 
             <!-- Active states -->

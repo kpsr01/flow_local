@@ -16,8 +16,8 @@ public partial class App : Application
     private GlobalShortcutService? _shortcut;
     private WasapiAudioCaptureService? _audio;
     private DictationController? _dictation;
-    private FoundryLocalAsrService? _asr;
-    private S1MiniTranscriptCleaner? _cleaner;
+    private MoonshineAsrService? _asr;
+    private LfmTranscriptCleaner? _cleaner;
     private SqliteHistoryRepository? _history;
     private AppSettingsStore? _appSettings;
     private HistoryActionService? _historyActions;
@@ -47,8 +47,8 @@ public partial class App : Application
         _audio = new WasapiAudioCaptureService();
         _audio.LevelChanged += OnAudioLevelChanged;
         _audio.FellBackToDefaultDevice += OnMicrophoneFallback;
-        _asr = new FoundryLocalAsrService();
-        _cleaner = new S1MiniTranscriptCleaner();
+        _asr = new MoonshineAsrService();
+        _cleaner = new LfmTranscriptCleaner();
         _history = new SqliteHistoryRepository();
         _appSettings = new AppSettingsStore();
         var targets = new ActiveTargetTracker();
@@ -60,7 +60,7 @@ public partial class App : Application
             new RecordingStateMachine(), targets, contextDetector, styleClassifier, styleOverrides,
             _audio, _asr, _cleaner, _cleaner, insertion, _overlayWindow,
             NullLogger<DictationController>.Instance, _history,
-            asrModelName: FoundryLocalAsrService.ModelAlias);
+            asrModelName: MoonshineAsrService.ModelName);
         var historyActions = new HistoryActionService(_history, _asr, _cleaner, targets, insertion);
         _historyActions = historyActions;
         ApplicationContext? diagnosticContext = null;
@@ -331,7 +331,7 @@ public partial class App : Application
 
     private Task ShowBackendUnavailableAsync()
     {
-        _overlayWindow?.ShowFailure("Foundry Local is not ready. Dictation is unavailable.");
+        _overlayWindow?.ShowFailure("The speech model is not ready. Dictation is unavailable.");
         _overlayWindow?.ShowOverlay();
         return Task.CompletedTask;
     }

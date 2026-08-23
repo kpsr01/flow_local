@@ -30,7 +30,7 @@ WizardStyle=modern
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Messages]
-WelcomeLabel2=This will install [name/ver], a private, local dictation assistant.%n%nEverything runs on this PC: speech recognition and text cleanup never touch the cloud.%n%nThe installer also sets up the Foundry Local runtime and downloads the speech models (roughly 900 MB total). An internet connection is required once.
+WelcomeLabel2=This will install [name/ver], a private, local dictation assistant.%n%nEverything runs on this PC: speech recognition and text cleanup never touch the cloud.%n%nThe installer also downloads the speech models (roughly 500 MB total). An internet connection is required once.
 SelectDirDesc=Where should FlowLocal be installed?
 FinishedLabelNoIcons=[name] has been installed. The dictation capsule is running in your system tray - hold Ctrl+Win anywhere and speak.
 FinishedLabel=[name] has been installed. The dictation capsule is running in your system tray - hold Ctrl+Win anywhere and speak.
@@ -44,10 +44,25 @@ Name: "desktopicon"; Description: "Create a &desktop shortcut"; \
 [Files]
 ; App payload
 Source: "..\artifacts\publish\win-x64\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
-; Cleanup model (quantization-aware-distilled GGUF)
-Source: "https://huggingface.co/LiquidAI/LFM2.5-350M-GGUF/resolve/main/LFM2.5-350M-QAD-Q4_0.gguf"; \
-    DestDir: "{localappdata}\FlowLocal\Models"; DestName: "LFM2.5-350M-QAD-Q4_0.gguf"; \
-    ExternalSize: 219312832; Flags: external download ignoreversion; Check: Not GgufSkipDownload()
+; Moonshine streaming-medium ONNX graphs + tokenizer (MIT license)
+Source: "https://huggingface.co/moonshine-ai/moonshine-streaming/resolve/main/onnx/medium/frontend.onnx"; \
+    DestDir: "{localappdata}\FlowLocal\Models\moonshine-streaming-medium"; ExternalSize: 47458770; \
+    Flags: external download ignoreversion; Check: Not MoonshineModelPresent()
+Source: "https://huggingface.co/moonshine-ai/moonshine-streaming/resolve/main/onnx/medium/encoder.onnx"; \
+    DestDir: "{localappdata}\FlowLocal\Models\moonshine-streaming-medium"; ExternalSize: 94664836; \
+    Flags: external download ignoreversion; Check: Not MoonshineModelPresent()
+Source: "https://huggingface.co/moonshine-ai/moonshine-streaming/resolve/main/onnx/medium/adapter.onnx"; \
+    DestDir: "{localappdata}\FlowLocal\Models\moonshine-streaming-medium"; ExternalSize: 14560169; \
+    Flags: external download ignoreversion; Check: Not MoonshineModelPresent()
+Source: "https://huggingface.co/moonshine-ai/moonshine-streaming/resolve/main/onnx/medium/cross_kv.onnx"; \
+    DestDir: "{localappdata}\FlowLocal\Models\moonshine-streaming-medium"; ExternalSize: 11595723; \
+    Flags: external download ignoreversion; Check: Not MoonshineModelPresent()
+Source: "https://huggingface.co/moonshine-ai/moonshine-streaming/resolve/main/onnx/medium/decoder_kv.onnx"; \
+    DestDir: "{localappdata}\FlowLocal\Models\moonshine-streaming-medium"; ExternalSize: 125780753; \
+    Flags: external download ignoreversion; Check: Not MoonshineModelPresent()
+Source: "https://huggingface.co/moonshine-ai/moonshine-streaming/resolve/main/onnx/medium/tokenizer.json"; \
+    DestDir: "{localappdata}\FlowLocal\Models\moonshine-streaming-medium"; ExternalSize: 1985533; \
+    Flags: external download ignoreversion; Check: Not MoonshineModelPresent()
 
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExeName}"
@@ -61,93 +76,23 @@ Filename: "{app}\{#AppExeName}"; Description: "Launch {#AppName} now"; \
 
 [Code]
 const
-  ModelAlias = 'nemotron-speech-streaming-en-0.6b';
-  FoundryAliasPath = '{localappdata}\Microsoft\WindowsApps\foundry.exe';
+  MoonshineModelDir = '{localappdata}\FlowLocal\Models\moonshine-streaming-medium';
   GgufTarget = '{localappdata}\FlowLocal\Models\LFM2.5-350M-QAD-Q4_0.gguf';
 
-var
-  PrereqPage: TOutputProgressWizardPage;
-
-procedure InitializeWizard();
+function MoonshineModelPresent(): Boolean;
 begin
-  PrereqPage := CreateOutputProgressPage(
-    'Setting up local AI components',
-    'Installing the Foundry Local runtime and speech models. This runs entirely on your PC.');
-end;
-
-function GgufAlreadyPresent(): Boolean;
-begin
-  Result := FileExists(ExpandConstant(GgufTarget));
+  Result :=
+    FileExists(ExpandConstant(MoonshineModelDir + '\frontend.onnx')) and
+    FileExists(ExpandConstant(MoonshineModelDir + '\encoder.onnx')) and
+    FileExists(ExpandConstant(MoonshineModelDir + '\adapter.onnx')) and
+    FileExists(ExpandConstant(MoonshineModelDir + '\cross_kv.onnx')) and
+    FileExists(ExpandConstant(MoonshineModelDir + '\decoder_kv.onnx')) and
+    FileExists(ExpandConstant(MoonshineModelDir + '\tokenizer.json'));
 end;
 
 function GgufSkipDownload(): Boolean;
 begin
-  Result := GgufAlreadyPresent();
-end;
-
-function FoundryInstalled(): Boolean;
-begin
-  Result := FileExists(ExpandConstant(FoundryAliasPath));
-end;
-
-procedure InstallFoundry();
-var
-  ResultCode: Integer;
-begin
-  if FoundryInstalled() then
-  begin
-    Log('Foundry Local already installed.');
-    exit;
-  end;
-
-  PrereqPage.SetText('Installing Microsoft Foundry Local…', 'This can take a few minutes on first run.');
-  PrereqPage.Show;
-  try
-    if not Exec('powershell.exe',
-        '-NoProfile -ExecutionPolicy Bypass -Command "winget install --id Microsoft.FoundryLocal -e --accept-source-agreements --accept-package-agreements --silent"',
-        '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
-      LogFmt('Failed to launch winget (code %d)', [ResultCode])
-    else if ResultCode <> 0 then
-      LogFmt('winget returned non-zero exit code %d', [ResultCode]);
-  finally
-    PrereqPage.Hide;
-  end;
-end;
-
-procedure PreWarmFoundry();
-var
-  ResultCode: Integer;
-begin
-  if not FoundryInstalled() then
-  begin
-    Log('Skipping model predownload: Foundry Local was not installed successfully.');
-    exit;
-  end;
-
-  // Starts the local service, registers execution providers (~90 s on first run),
-  // and pulls the ASR model into the shared cache so the app is ready offline.
-  PrereqPage.SetText('Preparing the local speech model…', 'Downloading and registering execution providers. One-time setup.');
-  PrereqPage.Show;
-  try
-    Exec(ExpandConstant(FoundryAliasPath),
-        Format('model download %s', [ModelAlias]), '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-  finally
-    PrereqPage.Hide;
-  end;
-end;
-
-procedure CurStepChanged(CurStep: TSetupStep);
-begin
-  if CurStep = ssInstall then
-  begin
-    try
-      InstallFoundry();
-      PreWarmFoundry();
-    except
-      // Never fail the file installation over prerequisite hiccups;
-      // the app surfaces precise guidance at first launch instead.
-    end;
-  end;
+  Result := FileExists(ExpandConstant(GgufTarget));
 end;
 
 function DeleteHistory: Boolean;

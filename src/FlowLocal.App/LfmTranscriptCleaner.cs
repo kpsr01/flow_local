@@ -7,10 +7,9 @@ using LLama.Sampling;
 
 namespace FlowLocal.App;
 
-public sealed class S1MiniTranscriptCleaner : ITranscriptCleaner, ICleanupBackend, IDisposable
+public sealed class LfmTranscriptCleaner : ITranscriptCleaner, ICleanupBackend, IDisposable
 {
     private const string ModelPathVariable = "FLOWLOCAL_CLEANUP_MODEL_PATH";
-    private const string LegacyModelPathVariable = "FLOWLOCAL_S1_MODEL_PATH";
     private readonly SemaphoreSlim initializationLock = new(1, 1);
     private readonly SemaphoreSlim inferenceLock = new(1, 1);
     private LLamaWeights? weights;
@@ -19,8 +18,7 @@ public sealed class S1MiniTranscriptCleaner : ITranscriptCleaner, ICleanupBacken
     public string BackendId => "lfm25-cleanup-llamasharp";
     public string DisplayName => "LFM2.5-350M (local GGUF)";
 
-    /// <summary>Configured GGUF path from FLOWLOCAL_CLEANUP_MODEL_PATH (or the legacy
-    /// FLOWLOCAL_S1_MODEL_PATH), when set.</summary>
+    /// <summary>Configured GGUF path from FLOWLOCAL_CLEANUP_MODEL_PATH, when set.</summary>
     public static string? ConfiguredModelPath =>
         ResolveModelPath();
 
@@ -95,7 +93,7 @@ public sealed class S1MiniTranscriptCleaner : ITranscriptCleaner, ICleanupBacken
             if (string.IsNullOrWhiteSpace(modelPath))
             {
                 throw new InvalidOperationException(
-                    $"Set {ModelPathVariable} (or legacy {LegacyModelPathVariable}) to the local GGUF cleanup model path.");
+                    $"Set {ModelPathVariable} to the local GGUF cleanup model path.");
             }
 
             if (!File.Exists(modelPath))
@@ -103,11 +101,11 @@ public sealed class S1MiniTranscriptCleaner : ITranscriptCleaner, ICleanupBacken
                 throw new FileNotFoundException("The configured GGUF cleanup model was not found.", modelPath);
             }
 
-            // CPU is the stable default on every machine. Set FLOWLOCAL_S1_GPU=1 to
+            // CPU is the stable default on every machine. Set FLOWLOCAL_LFM_GPU=1 to
             // experiment with full GPU offload (falls back to CPU automatically).
             var threads = Math.Max(4, Environment.ProcessorCount);
             var gpuRequested = string.Equals(
-                Environment.GetEnvironmentVariable("FLOWLOCAL_S1_GPU"), "1", StringComparison.OrdinalIgnoreCase);
+                Environment.GetEnvironmentVariable("FLOWLOCAL_LFM_GPU"), "1", StringComparison.OrdinalIgnoreCase);
             int[] offloadPlan = gpuRequested ? [99, 0] : [0];
             foreach (var gpuLayers in offloadPlan)
             {
@@ -151,7 +149,6 @@ public sealed class S1MiniTranscriptCleaner : ITranscriptCleaner, ICleanupBacken
     {
         var configured =
             Environment.GetEnvironmentVariable(ModelPathVariable) is { Length: > 0 } primary ? primary
-            : Environment.GetEnvironmentVariable(LegacyModelPathVariable) is { Length: > 0 } legacy ? legacy
             : null;
         if (configured is not null) return configured;
 

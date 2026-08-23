@@ -13,6 +13,10 @@ $iscc = $isccCommand.Source
 if (-not $iscc) {
     $iscc = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
 }
+if (-not $iscc -or -not (Test-Path $iscc)) {
+    $perUser = Join-Path $env:LOCALAPPDATA 'Programs\Inno Setup 6\ISCC.exe'
+    if (Test-Path $perUser) { $iscc = $perUser }
+}
 if (-not $PortableOnly -and -not (Test-Path $iscc)) {
     throw 'Inno Setup 6 is required to build the installer (ISCC.exe was not found). Use -PortableOnly for the portable artifact.'
 }

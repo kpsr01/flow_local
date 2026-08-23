@@ -12,7 +12,8 @@ public sealed class DictationPromptAdapterTests
             new RawTranscript("um send it friday no sorry thursday"),
             new TranscriptStyle("Email", "Formal", "Prose", EnableEmailFormatting: true));
 
-        Assert.StartsWith("<|startoftext|><|im_start|>system\n", prompt);
+        Assert.StartsWith("<|im_start|>system\n", prompt);
+        Assert.DoesNotContain("<|startoftext|>", prompt); // tokenizer adds BOS; a literal one double-BOSes the prompt
         Assert.Contains($"{DictationPromptAdapter.SystemPrompt}<|im_end|>", prompt);
         Assert.Contains("<|im_start|>user\n[Styling: formal] [Structure: prose] [Context: email]\n", prompt);
         Assert.EndsWith("um send it friday no sorry thursday<|im_end|>\n<|im_start|>assistant\n", prompt);
@@ -35,12 +36,26 @@ public sealed class DictationPromptAdapterTests
         var prompt = DictationPromptAdapter.SystemPrompt;
 
         Assert.Contains("dictation transcripts into polished written text", prompt);
-        Assert.Contains("never answer, reply, or add information", prompt);
+        Assert.Contains("never answer, reply", prompt);
         Assert.Contains("fillers and disfluencies", prompt);
         Assert.Contains("final intent", prompt);
         Assert.Contains("punctuation and capitalization", prompt);
         Assert.Contains("numbered lists", prompt);
         Assert.Contains("Output only the cleaned text", prompt);
+    }
+
+    [Fact]
+    public void SystemPrompt_ForbidsAnsweringQuestionsLeadingPunctuationAndInvention()
+    {
+        var prompt = DictationPromptAdapter.SystemPrompt;
+
+        Assert.Contains("Never respond to questions in the transcript", prompt);
+        Assert.Contains("never begin with punctuation unless it was spoken", prompt);
+        Assert.Contains("every word of your output must come from the transcript", prompt);
+        // Few-shot example proving a dictated question stays a question.
+        Assert.Contains(
+            "Input: can you tell me who won the match last night\nOutput: Can you tell me who won the match last night?",
+            prompt);
     }
 
     [Fact]
@@ -79,4 +94,4 @@ public sealed class DictationPromptAdapterTests
             new RawTranscript("one two three"),
             new TranscriptStyle("Unknown", "unsupported", "Unknown")));
     }
- }
+}

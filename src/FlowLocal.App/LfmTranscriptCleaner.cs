@@ -55,8 +55,16 @@ public sealed class LfmTranscriptCleaner : ITranscriptCleaner, ICleanupBackend, 
             var output = new StringBuilder();
             var inference = new InferenceParams
             {
-                MaxTokens = Math.Clamp(transcript.Text.Length, 64, 1024),
-                SamplingPipeline = new GreedySamplingPipeline(),
+                // ~4 chars per token spoken -> allow ~2x that in output tokens,
+                // min 128, never below what a long dictation needs.
+                MaxTokens = Math.Clamp(transcript.Text.Length / 2, 128, 2048),
+                // Greedy (Temperature = 0) for fidelity; the repeat penalty stops
+                // the 350M model from looping/duplicating words mid-output.
+                SamplingPipeline = new DefaultSamplingPipeline
+                {
+                    Temperature = 0,
+                    RepeatPenalty = 1.1f,
+                },
                 AntiPrompts = ["<|im_end|>", "<|endoftext|>"]
             };
 
@@ -111,7 +119,7 @@ public sealed class LfmTranscriptCleaner : ITranscriptCleaner, ICleanupBackend, 
             {
                 modelParameters = new ModelParams(modelPath)
                 {
-                    ContextSize = 4096,
+                    ContextSize = 8192,
                     GpuLayerCount = gpuLayers,
                     Threads = threads,
                 };

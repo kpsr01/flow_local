@@ -40,7 +40,7 @@ Before insertion, `ActiveTargetTracker` restores and validates the captured targ
 
 `MoonshineAsrService` is a thin stdio client for the headless `FlowLocal.AsrWorker.exe` process, which runs [Moonshine streaming-medium](https://huggingface.co/moonshine-ai/moonshine-streaming-medium) through Microsoft.ML.OnnxRuntime (CPU). Audio accumulates as 16 kHz mono float PCM during a session; at release the worker runs the frontend/encoder/adapter graphs over the full buffer and greedy-decodes with `decoder_kv.onnx`, so results are final-on-release. Missing model files are downloaded from Hugging Face at first init into `%LOCALAPPDATA%\FlowLocal\Models\moonshine-streaming-medium`.
 
-`LfmTranscriptCleaner` uses LLamaSharp. It reads the model from `FLOWLOCAL_CLEANUP_MODEL_PATH`, falling back to the most recently written `.gguf` in `%LOCALAPPDATA%\FlowLocal\Models`. It uses a 4096-token context, greedy sampling, and CPU inference by default; setting `FLOWLOCAL_LFM_GPU=1` requests full GPU offload with automatic fallback to CPU. It neither downloads the GGUF nor searches beyond that directory.
+`LfmTranscriptCleaner` uses LLamaSharp. It reads the model from `FLOWLOCAL_CLEANUP_MODEL_PATH`, falling back to the most recently written `.gguf` in `%LOCALAPPDATA%\FlowLocal\Models`. It uses an 8192-token context, temperature-0 sampling with a repeat penalty, and CPU inference by default; setting `FLOWLOCAL_LFM_GPU=1` requests full GPU offload with automatic fallback to CPU. It neither downloads the GGUF nor searches beyond that directory.
 
 Both inference stages are local after prerequisites are present. First-time speech-model acquisition and normal package installation can use the network.
 

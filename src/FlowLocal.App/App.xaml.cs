@@ -23,6 +23,8 @@ public partial class App : Application
     private HistoryActionService? _historyActions;
     private bool _retryBusy;
     private bool _dictationReady;
+    private Mutex? _singleInstance;
+    private EventWaitHandle? _activationSignal;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -31,6 +33,22 @@ public partial class App : Application
         DispatcherUnhandledException += OnDispatcherUnhandledException;
         AppDomain.CurrentDomain.UnhandledException += (_, args) =>
             LogCrash(args.ExceptionObject as Exception ?? new InvalidOperationException(args.ExceptionObject?.ToString() ?? "Unknown failure"));
+
+        // Single instance: relaunching from Start/search/taskbar just surfaces the main window.
+        _activationSignal = new EventWaitHandle(false, EventResetMode.AutoReset, @"Local\FlowLocal.ShowMain");
+        _singleInstance = new Mutex(true, @"Local\FlowLocal.SingleInstance", out var isFirst);
+        if (!isFirst)
+        {
+            _activationSignal.Set();
+            Shutdown();
+            return;
+        }
+        _ = Task.Run(() =>
+        {
+            while (_activationSignal.WaitOne()) Dispatcher.Invoke(ShowSettings);
+        });
+
+        var showMainWindow = !e.Args.Contains("--background", StringComparer.OrdinalIgnoreCase);
         _settingsWindow = new MainWindow();
         MainWindow = _settingsWindow;
         _settingsWindow.Icon = FlowIcon.CreateImageSource();
@@ -43,6 +61,7 @@ public partial class App : Application
         _overlayWindow.StartRequested += OnPillStartRequested;
         _overlayWindow.StopRequested += OnOverlayStopRequested;
         _overlayWindow.CancelRequested += OnOverlayCancelRequested;
+        _overlayWindow.ExitRequested += (_, _) => ExitApplication();
         _overlayWindow.ShowOverlay();
         _audio = new WasapiAudioCaptureService();
         _audio.LevelChanged += OnAudioLevelChanged;
@@ -96,6 +115,7 @@ public partial class App : Application
         };
         _notifyIcon.DoubleClick += (_, _) => ShowSettings();
         _ = InitializeAsync(historyActions);
+        if (showMainWindow) ShowSettings();
     }
 
     private async Task InitializeAsync(HistoryActionService actions)
@@ -372,6 +392,8 @@ public partial class App : Application
         _audio?.Dispose();
         _cleaner?.Dispose();
         if (_asr is not null) await _asr.DisposeAsync();
+        _activationSignal?.Dispose();
+        _singleInstance?.Dispose();
         base.OnExit(e);
     }
 }

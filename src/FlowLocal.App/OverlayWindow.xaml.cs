@@ -67,6 +67,7 @@ public partial class OverlayWindow : Window
     public event EventHandler? StartRequested;
     public event EventHandler? StopRequested;
     public event EventHandler? CancelRequested;
+    public event EventHandler? ExitRequested;
 
     public OverlayWindow()
     {
@@ -265,6 +266,7 @@ public partial class OverlayWindow : Window
 
         // Idle pill is plain until hover — the mic glyph only appears via Root_MouseEnter.
         MiniDot.Visibility = Visibility.Collapsed;
+        ExitPillButton.Visibility = Visibility.Collapsed;
         ActiveRow.Visibility = mode == PillMode.Mini ? Visibility.Collapsed : Visibility.Visible;
         // One pill identity in every state: same radius + ember outline, so expanding
         // never looks like a different popup. Idle just enforces the resting footprint.
@@ -468,12 +470,14 @@ public partial class OverlayWindow : Window
     {
         if (_mode != PillMode.Mini) return;
         MiniDot.Visibility = Visibility.Visible;
+        ExitPillButton.Visibility = Visibility.Visible;
     }
 
     private void Root_MouseLeave(object sender, System.Windows.Input.MouseEventArgs e)
     {
         if (_mode != PillMode.Mini) return;
         MiniDot.Visibility = Visibility.Collapsed;
+        ExitPillButton.Visibility = Visibility.Collapsed;
     }
 
     private void Root_ClickStart(object sender, System.Windows.Input.MouseButtonEventArgs e)
@@ -497,6 +501,9 @@ public partial class OverlayWindow : Window
         EnterMode(PillMode.Processing);
         StopRequested?.Invoke(this, EventArgs.Empty);
     }
+
+    private void Exit_Click(object sender, RoutedEventArgs e) =>
+        ExitRequested?.Invoke(this, EventArgs.Empty);
 
     private void Cancel_Click(object sender, RoutedEventArgs e)
     {

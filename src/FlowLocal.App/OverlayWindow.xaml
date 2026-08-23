@@ -84,9 +84,10 @@
         </Style>
     </Window.Resources>
     <Grid Margin="24">
+        <Grid x:Name="PillHost" MouseEnter="Root_MouseEnter" MouseLeave="Root_MouseLeave">
         <Border x:Name="Root" Background="#F2151518"
                 BorderBrush="#22FFFFFF" BorderThickness="1" CornerRadius="8"
-                Padding="10,6" RenderTransformOrigin="0.5,1" MouseEnter="Root_MouseEnter" MouseLeave="Root_MouseLeave" MouseLeftButtonDown="Root_ClickStart">
+                Padding="10,6" RenderTransformOrigin="0.5,1" MouseLeftButtonDown="Root_ClickStart">
             <Border.RenderTransform>
                 <TransformGroup>
                     <TranslateTransform x:Name="RootTranslate" />
@@ -164,5 +165,15 @@
             </Grid>
             </Grid>
         </Border>
+        <Button x:Name="ExitPillButton" Content="&#xE8BB;" Style="{StaticResource RoundIconButton}"
+                Width="16" Height="16" FontSize="8" HorizontalAlignment="Right" VerticalAlignment="Top"
+                Visibility="Collapsed" Click="Exit_Click" ToolTip="Exit FlowLocal"
+                automation:AutomationProperties.Name="Exit FlowLocal"
+                automation:AutomationProperties.HelpText="Closes FlowLocal completely.">
+            <Button.RenderTransform>
+                <TranslateTransform X="7" Y="-7" />
+            </Button.RenderTransform>
+        </Button>
+        </Grid>
     </Grid>
 </Window>

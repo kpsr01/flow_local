@@ -30,7 +30,7 @@ WizardStyle=modern
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Messages]
-WelcomeLabel2=This will install [name/ver], a private, local dictation assistant.%n%nEverything runs on this PC: speech recognition and text cleanup never touch the cloud.%n%nThe installer also downloads the speech models (roughly 500 MB total). An internet connection is required once.
+WelcomeLabel2=This will install [name/ver], a private, local dictation assistant.%n%nEverything runs on this PC: speech recognition and text cleanup never touch the cloud.%n%nThe installer also downloads the speech-recognition and text-cleanup models (roughly 500 MB total). An internet connection is required once.
 SelectDirDesc=Where should FlowLocal be installed?
 FinishedLabelNoIcons=[name] has been installed. The dictation capsule is running in your system tray - hold Ctrl+Win anywhere and speak.
 FinishedLabel=[name] has been installed. The dictation capsule is running in your system tray - hold Ctrl+Win anywhere and speak.
@@ -46,29 +46,32 @@ Name: "desktopicon"; Description: "Create a &desktop shortcut"; \
 Source: "..\artifacts\publish\win-x64\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 ; Moonshine streaming-medium ONNX graphs + tokenizer (MIT license)
 Source: "https://huggingface.co/moonshine-ai/moonshine-streaming/resolve/main/onnx/medium/frontend.onnx"; \
-    DestDir: "{localappdata}\FlowLocal\Models\moonshine-streaming-medium"; ExternalSize: 47458770; \
+    DestDir: "{localappdata}\FlowLocal\Models\moonshine-streaming-medium"; DestName: "frontend.onnx"; ExternalSize: 47458770; \
     Flags: external download ignoreversion; Check: Not MoonshineModelPresent()
 Source: "https://huggingface.co/moonshine-ai/moonshine-streaming/resolve/main/onnx/medium/encoder.onnx"; \
-    DestDir: "{localappdata}\FlowLocal\Models\moonshine-streaming-medium"; ExternalSize: 94664836; \
+    DestDir: "{localappdata}\FlowLocal\Models\moonshine-streaming-medium"; DestName: "encoder.onnx"; ExternalSize: 94664836; \
     Flags: external download ignoreversion; Check: Not MoonshineModelPresent()
 Source: "https://huggingface.co/moonshine-ai/moonshine-streaming/resolve/main/onnx/medium/adapter.onnx"; \
-    DestDir: "{localappdata}\FlowLocal\Models\moonshine-streaming-medium"; ExternalSize: 14560169; \
+    DestDir: "{localappdata}\FlowLocal\Models\moonshine-streaming-medium"; DestName: "adapter.onnx"; ExternalSize: 14560169; \
     Flags: external download ignoreversion; Check: Not MoonshineModelPresent()
 Source: "https://huggingface.co/moonshine-ai/moonshine-streaming/resolve/main/onnx/medium/cross_kv.onnx"; \
-    DestDir: "{localappdata}\FlowLocal\Models\moonshine-streaming-medium"; ExternalSize: 11595723; \
+    DestDir: "{localappdata}\FlowLocal\Models\moonshine-streaming-medium"; DestName: "cross_kv.onnx"; ExternalSize: 11595723; \
     Flags: external download ignoreversion; Check: Not MoonshineModelPresent()
 Source: "https://huggingface.co/moonshine-ai/moonshine-streaming/resolve/main/onnx/medium/decoder_kv.onnx"; \
-    DestDir: "{localappdata}\FlowLocal\Models\moonshine-streaming-medium"; ExternalSize: 125780753; \
+    DestDir: "{localappdata}\FlowLocal\Models\moonshine-streaming-medium"; DestName: "decoder_kv.onnx"; ExternalSize: 125780753; \
     Flags: external download ignoreversion; Check: Not MoonshineModelPresent()
 Source: "https://huggingface.co/moonshine-ai/moonshine-streaming/resolve/main/onnx/medium/tokenizer.json"; \
-    DestDir: "{localappdata}\FlowLocal\Models\moonshine-streaming-medium"; ExternalSize: 1985533; \
+    DestDir: "{localappdata}\FlowLocal\Models\moonshine-streaming-medium"; DestName: "tokenizer.json"; ExternalSize: 1985533; \
     Flags: external download ignoreversion; Check: Not MoonshineModelPresent()
+Source: "https://huggingface.co/LiquidAI/LFM2.5-350M-GGUF/resolve/main/LFM2.5-350M-QAD-Q4_0.gguf"; \
+    DestDir: "{localappdata}\FlowLocal\Models"; DestName: "LFM2.5-350M-QAD-Q4_0.gguf"; ExternalSize: 219312832; \
+    Flags: external download ignoreversion; Check: Not GgufSkipDownload()
 
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExeName}"
 Name: "{group}\Uninstall {#AppName}"; Filename: "{uninstallexe}"
 Name: "{userdesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; Tasks: desktopicon
-Name: "{userstartup}\{#AppName}"; Filename: "{app}\{#AppExeName}"; Tasks: startup
+Name: "{userstartup}\{#AppName}"; Filename: "{app}\{#AppExeName}"; Parameters: "--background"; Tasks: startup
 
 [Run]
 Filename: "{app}\{#AppExeName}"; Description: "Launch {#AppName} now"; \

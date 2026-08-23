@@ -6,15 +6,15 @@ using FlowLocal.Core;
 namespace FlowLocal.App;
 
 /// <summary>
-/// Thin client for the FlowLocal.AsrWorker companion process. All native Foundry Local
-/// interop runs inside the worker so stalls or native aborts never take the app down;
+/// Thin client for the FlowLocal.AsrWorker companion process. All Moonshine ONNX
+/// inference runs inside the worker so stalls or native aborts never take the app down;
 /// a wedged or crashed worker is killed and transparently respawned for the next session.
 /// </summary>
-public sealed class FoundryLocalAsrService : IAsrService, IDisposable, IAsyncDisposable
+public sealed class MoonshineAsrService : IAsrService, IDisposable, IAsyncDisposable
 {
-    public const string ModelAlias = "nemotron-speech-streaming-en-0.6b";
+    public const string ModelName = "moonshine-streaming-medium";
 
-    private static readonly TimeSpan InitTimeout = TimeSpan.FromMinutes(2);
+    private static readonly TimeSpan InitTimeout = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan StartAckTimeout = TimeSpan.FromSeconds(45);
     private static readonly TimeSpan CompleteTimeout = TimeSpan.FromSeconds(120);
     private static readonly TimeSpan CancelTimeout = TimeSpan.FromSeconds(10);
@@ -29,7 +29,7 @@ public sealed class FoundryLocalAsrService : IAsrService, IDisposable, IAsyncDis
     private bool _initialized;
     private bool _disposed;
 
-    public FoundryLocalStatus Status { get; private set; } = new(FoundryLocalState.NotInstalled);
+    public AsrBackendStatus Status { get; private set; } = new(AsrBackendState.NotInstalled);
 
     public async Task InitializeAsync(CancellationToken cancellationToken)
     {
@@ -50,7 +50,7 @@ public sealed class FoundryLocalAsrService : IAsrService, IDisposable, IAsyncDis
         ArgumentNullException.ThrowIfNull(options);
         if (options.SampleRate != 16_000 || options.BitsPerSample != 16 || options.Channels != 1)
         {
-            throw new ArgumentException("Foundry Local ASR requires 16000 Hz, 16-bit, mono PCM audio.", nameof(options));
+            throw new ArgumentException("Moonshine ASR requires 16000 Hz, 16-bit, mono PCM audio.", nameof(options));
         }
 
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -166,12 +166,12 @@ public sealed class FoundryLocalAsrService : IAsrService, IDisposable, IAsyncDis
     {
         if (IsWorkerAlive && _initialized)
         {
-            Status = new(FoundryLocalState.Ready, ModelAlias);
+            Status = new(AsrBackendState.Ready, ModelName);
             return;
         }
 
-        // First-run EP registration inside the worker can occasionally stall on hybrid
-        // graphics; a fresh process picks up the warm daemon state instead of hanging forever.
+        // First-run model download/ONNX session warm-up inside the worker can occasionally
+        // stall; a fresh process retries instead of hanging forever.
         for (var attempt = 1; ; attempt++)
         {
             if (!IsWorkerAlive)
@@ -179,7 +179,7 @@ public sealed class FoundryLocalAsrService : IAsrService, IDisposable, IAsyncDis
                 StartWorker();
             }
 
-            Status = new(FoundryLocalState.Initializing, ModelAlias);
+            Status = new(AsrBackendState.Initializing, ModelName);
             try
             {
                 await RequestAckAsync(new { cmd = "init" }, InitTimeout, cancellationToken).ConfigureAwait(false);
@@ -220,7 +220,7 @@ public sealed class FoundryLocalAsrService : IAsrService, IDisposable, IAsyncDis
         _worker = process;
         _stdin = process.StandardInput;
         _initialized = false;
-        Status = new(FoundryLocalState.Initializing, ModelAlias);
+        Status = new(AsrBackendState.Initializing, ModelName);
 
         _reader = ReaderLoopAsync(process);
         _ = process.StandardError.ReadToEndAsync();
@@ -260,10 +260,10 @@ public sealed class FoundryLocalAsrService : IAsrService, IDisposable, IAsyncDis
             {
                 case "status":
                     Status = new(
-                        root.TryGetProperty("state", out var stateEl) && Enum.TryParse<FoundryLocalState>(stateEl.GetString(), out var parsed)
+                        root.TryGetProperty("state", out var stateEl) && Enum.TryParse<AsrBackendState>(stateEl.GetString(), out var parsed)
                             ? parsed
-                            : FoundryLocalState.Initializing,
-                        ModelAlias,
+                            : AsrBackendState.Initializing,
+                        ModelName,
                         Provider: root.TryGetProperty("detail", out var detailEl) && detailEl.ValueKind == JsonValueKind.String
                             ? detailEl.GetString()
                             : null);

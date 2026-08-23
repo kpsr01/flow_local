@@ -58,8 +58,8 @@ public partial class MainWindow : Window
     private AppSettingsStore? _appSettings;
     private GlobalShortcutService? _shortcut;
     private WasapiAudioCaptureService? _audio;
-    private FoundryLocalAsrService? _asr;
-    private S1MiniTranscriptCleaner? _cleaner;
+    private MoonshineAsrService? _asr;
+    private LfmTranscriptCleaner? _cleaner;
     private Action<AppSettings>? _applyAppSettings;
     private IReadOnlyList<MicrophoneDeviceInfo> _microphones = [];
 
@@ -138,8 +138,8 @@ public partial class MainWindow : Window
         AppSettingsStore appSettings,
         GlobalShortcutService shortcut,
         WasapiAudioCaptureService audio,
-        FoundryLocalAsrService asr,
-        S1MiniTranscriptCleaner cleaner,
+        MoonshineAsrService asr,
+        LfmTranscriptCleaner cleaner,
         Action<AppSettings> applyAppSettings)
     {
         _appSettings = appSettings ?? throw new ArgumentNullException(nameof(appSettings));
@@ -303,13 +303,13 @@ public partial class MainWindow : Window
     {        VersionText.Text = (Assembly.GetEntryAssembly()?.GetCustomAttribute<AssemblyInformationalVersionAttribute>()
                 ?.InformationalVersion ?? Assembly.GetEntryAssembly()?.GetName().Version?.ToString()) ?? "—";
         RuntimeText.Text = $".NET {Environment.Version} — {Environment.OSVersion.VersionString}";
-        AsrModelText.Text = $"{FoundryLocalAsrService.ModelAlias} (Foundry Local)";
+        AsrModelText.Text = $"{MoonshineAsrService.ModelName} (Moonshine ONNX)";
         var status = _asr?.Status;
         AsrStateText.Text = status is null ? "—"
             : status.Provider is { Length: > 0 } provider ? $"{status.State} — {provider}" : status.State.ToString();
         CleanupBackendText.Text = _cleaner is null ? "—" :
             $"{_cleaner.DisplayName}{(_cleaner.IsLoaded ? $" — {_cleaner.ExecutionTarget}" : " — not loaded yet")}";
-        CleanupPathText.Text = S1MiniTranscriptCleaner.ConfiguredModelPath
+        CleanupPathText.Text = LfmTranscriptCleaner.ConfiguredModelPath
             ?? "Set FLOWLOCAL_CLEANUP_MODEL_PATH to a local GGUF file.";
         if (_audio is not null && FollowDefaultMicCheckBox is not null)
         {

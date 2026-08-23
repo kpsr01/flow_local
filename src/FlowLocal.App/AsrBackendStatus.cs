@@ -1,6 +1,6 @@
 namespace FlowLocal.App;
 
-public enum FoundryLocalState
+public enum AsrBackendState
 {
     NotInstalled,
     Initializing,
@@ -10,8 +10,8 @@ public enum FoundryLocalState
     Failed
 }
 
-public sealed record FoundryLocalStatus(
-    FoundryLocalState State,
+public sealed record AsrBackendStatus(
+    AsrBackendState State,
     string? ModelId = null,
     string? Provider = null,
     string? FailureMessage = null);

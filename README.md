@@ -1,35 +1,33 @@
 # FlowLocal
 
-FlowLocal is a Windows 11 x64 WPF dictation application. Hold the global shortcut, speak into the Windows default recording device, and release to run English speech recognition locally, clean the transcript with a local S1-mini GGUF model, classify the active target, and insert the result. The application is still awaiting the documented manual compatibility and performance runs; see [Known limitations](docs/known-limitations.md).
+FlowLocal is a Windows 11 x64 WPF dictation application. Hold the global shortcut, speak into the Windows default recording device, and release to run English speech recognition locally, clean the transcript with a local LFM2.5-350M GGUF model, classify the active target, and insert the result. The application is still awaiting the documented manual compatibility and performance runs; see [Known limitations](docs/known-limitations.md).
 
 ## System requirements
 
 - Windows 11 x64. The projects target `net9.0-windows10.0.26100.0`; Windows 10 is not a supported target.
 - .NET 9 SDK to build or run from source. A self-contained packaged build does not require a separately installed .NET runtime.
 - A working Windows recording device and microphone permission for desktop applications.
-- Disk space and memory for the app, the Foundry Local runtime assets/Nemotron speech model, and an S1-mini GGUF. Exact requirements depend on the chosen model file and Foundry Local execution provider and have not been benchmarked here.
-- Internet access for initial NuGet restore and the first Foundry Local model/runtime download. Dictation inference is local after those assets and S1-mini are installed.
+- Disk space and memory for the app, the Moonshine streaming-medium ONNX models (~296 MB in `%LOCALAPPDATA%\FlowLocal\Models\moonshine-streaming-medium`), and the LFM2.5 cleanup GGUF.
+- Internet access for initial NuGet restore and the first speech-model download. Dictation inference is local after those assets are installed.
 
-## Foundry Local prerequisite and ASR model
+## Speech model
 
-FlowLocal uses the `Microsoft.AI.Foundry.Local.WinML` SDK and the Foundry catalog alias `nemotron-speech-streaming-en-0.6b`. Foundry Local is a separate prerequisite: install a current Windows release of Foundry Local using Microsoft's official instructions before first launch. Confirm it starts successfully with its own CLI/readiness tooling.
+ASR runs [Moonshine streaming-medium](https://huggingface.co/moonshine-ai/moonshine-streaming-medium) through ONNX Runtime (CPU) inside the `FlowLocal.AsrWorker.exe` companion process. The worker loads `frontend.onnx`, `encoder.onnx`, `adapter.onnx`, `cross_kv.onnx`, and `decoder_kv.onnx` plus `tokenizer.json` from `%LOCALAPPDATA%\FlowLocal\Models\moonshine-streaming-medium`. The installer downloads these files; when running from source, the worker downloads any missing file from Hugging Face at first init, so the first launch may need network access.
 
-The app does **not** accept a manually copied Nemotron path. At startup it initializes Foundry Local, installs/registers its execution-provider assets, resolves the alias from the catalog, downloads it if it is not cached, loads it, and creates the audio client. Consequently the first launch may take time and require network access. If the alias is absent from the installed catalog, initialization fails and dictation remains unavailable.
+## Cleanup model installation
 
-## S1-mini model installation
+The cleanup stage uses LiquidAI's **LFM2.5-350M** as a GGUF loaded by LLamaSharp's CPU backend. A normal install downloads `LFM2.5-350M-QAD-Q4_0.gguf` into `%LOCALAPPDATA%\FlowLocal\Models` during setup; no environment variable is required.
 
-FlowLocal does not download S1-mini. Obtain a compatible `superwhisper/s1-mini` GGUF model file from a source whose license and provenance you trust. The project specification recommends the `Q4_K_M` quantization, but the implementation only verifies that the configured file exists and can be loaded by LLamaSharp's CPU backend.
-
-Place the GGUF anywhere readable by your Windows account and set its full path before starting FlowLocal:
+When running from source without the installer, either drop any compatible LFM2.5 GGUF into `%LOCALAPPDATA%\FlowLocal\Models` (the most recently written `.gguf` there is used) or point at one explicit file:
 
 ```powershell
 [Environment]::SetEnvironmentVariable(
-  "FLOWLOCAL_S1_MODEL_PATH",
-  "C:\Models\s1-mini\s1-mini-q4_k_m.gguf",
+  "FLOWLOCAL_CLEANUP_MODEL_PATH",
+  "C:\Models\LFM2.5-350M-QAD-Q4_0.gguf",
   "User")
 ```
 
-Restart the shell or Explorer-launched application after changing the user environment variable. The current implementation does not scan an application `Models` directory and has no model picker. It loads S1-mini with a 4096-token context and CPU inference (`GpuLayerCount = 0`).
+Restart the shell or Explorer-launched application after changing the user environment variable. There is no in-app model picker. The app loads the model with a 4096-token context and CPU inference by default; set `FLOWLOCAL_LFM_GPU=1` to experiment with full GPU offload (it falls back to CPU automatically).
 
 ## Build instructions
 
@@ -59,7 +57,7 @@ The app project is `src\FlowLocal.App\FlowLocal.App.csproj`; the target runtime 
 
 ## Run instructions
 
-After installing both model prerequisites and opening a new shell that sees `FLOWLOCAL_S1_MODEL_PATH`:
+After installing the speech and cleanup models:
 
 ```powershell
 dotnet run --project .\src\FlowLocal.App\FlowLocal.App.csproj -c Release
@@ -69,12 +67,11 @@ FlowLocal starts in the notification area. Right-click its tray icon for **Setti
 
 ## First-run setup
 
-1. Install Foundry Local and verify that prerequisite independently.
-2. Download an S1-mini GGUF and set `FLOWLOCAL_S1_MODEL_PATH` as shown above.
-3. In Windows, select and test the intended default input device and allow desktop-app microphone access.
-4. Start FlowLocal and wait for the initialization overlay to disappear. Foundry Local may download and load the Nemotron model on this first run; S1-mini is then loaded from the configured file.
-5. Open **Settings**, review Application styles and History/privacy defaults, then use **Test current target** while the intended target is active.
-6. Focus a writable text field, hold Ctrl+Windows while speaking, and release either key to transcribe, clean, and insert. Press Escape while held to cancel.
+1. Install FlowLocal normally (the installer downloads the Moonshine ONNX files and the cleanup GGUF), or run once from source with network access so the worker can fetch the speech model into `%LOCALAPPDATA%\FlowLocal\Models\moonshine-streaming-medium`, and place an LFM2.5 GGUF in `%LOCALAPPDATA%\FlowLocal\Models` or set `FLOWLOCAL_CLEANUP_MODEL_PATH` as shown above.
+2. In Windows, select and test the intended default input device and allow desktop-app microphone access.
+3. Start FlowLocal and wait for the initialization overlay to disappear. The worker may download and warm up the Moonshine model on this first run; the cleanup model is then loaded from its discovered or configured file.
+4. Open **Settings**, review Application styles and History/privacy defaults, then use **Test current target** while the intended target is active.
+5. Focus a writable text field, hold Ctrl+Windows while speaking, and release either key to transcribe, clean, and insert. Press Escape while held to cancel.
 
 Initialization errors remain visible in the overlay. There is no in-app model installer or retry button; correct the prerequisite or path and restart the app.
 
@@ -115,10 +112,12 @@ All mutable data is under `%LOCALAPPDATA%\FlowLocal`:
 | Path | Contents |
 | --- | --- |
 | `%LOCALAPPDATA%\FlowLocal\flowlocal.db` | SQLite history, transcript, target/style metadata, timings, errors, and retention settings |
+| `%LOCALAPPDATA%\FlowLocal\Models\*.gguf` | Cleanup model files (downloaded here by the installer) |
+| `%LOCALAPPDATA%\FlowLocal\Models\moonshine-streaming-medium\` | Moonshine ONNX graphs and tokenizer (downloaded here by the installer or the worker) |
 | `%LOCALAPPDATA%\FlowLocal\Recordings\<session-id>.wav` | Recoverable/session audio and retained recordings |
 | `%LOCALAPPDATA%\FlowLocal\application-styles.json` | Application/domain classification overrides and classification switches |
 
-The S1-mini GGUF remains at the path supplied by `FLOWLOCAL_S1_MODEL_PATH`. Foundry Local owns the Nemotron/runtime cache location; FlowLocal does not choose or manage that directory. Use **Open data directory** in Settings to open FlowLocal's local data folder.
+A manually configured cleanup GGUF remains at the path supplied by `FLOWLOCAL_CLEANUP_MODEL_PATH`. Use **Open data directory** in Settings to open FlowLocal's local data folder.
 
 ## Application styles and sample configuration
 
@@ -181,7 +180,7 @@ From the repository root:
 dotnet test .\FlowLocal.slnx -c Release
 ```
 
-The automated suite is `tests\FlowLocal.Core.Tests\FlowLocal.Core.Tests.csproj`. It covers core state, audio files/recovery, Foundry and S1 prompt contracts, cleanup/fallback validation, classification, active-target safeguards, insertion/clipboard behavior, retention/history, and UI smoke paths. Automated tests do not replace real Windows compatibility or latency measurements:
+The automated suite is `tests\FlowLocal.Core.Tests\FlowLocal.Core.Tests.csproj`. It covers core state, audio files/recovery, ASR backend and cleanup prompt contracts, cleanup/fallback validation, classification, active-target safeguards, insertion/clipboard behavior, retention/history, and UI smoke paths. Automated tests do not replace real Windows compatibility or latency measurements:
 
 - [Windows 11 manual compatibility checklist](docs/manual-compatibility.md)
 - [Windows 11 performance measurement procedure](docs/performance-measurements.md)

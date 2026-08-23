@@ -13,7 +13,7 @@ Status values: `UNVERIFIED`, `PASS`, `FAIL`, `BLOCKED`. All results below start 
 
 Prerequisites:
 
-1. Use Windows 11 x64 with FlowLocal, its local ASR model/runtime, and S1-mini installed and initialized.
+1. Use Windows 11 x64 with FlowLocal, its local ASR model/runtime, and the cleanup model installed and initialized.
 2. Configure a working microphone and the normal push-to-talk shortcut. Start FlowLocal and wait until it reports ready.
 3. Install/sign in to every target below. Use Chrome for Gmail and the browser versions of WhatsApp, Notion, and ChatGPT. For VS Code and Windows Terminal, open a disposable text file and a harmless shell prompt respectively.
 4. Enable Windows Game Bar recording (`Win+Alt+R`) or another screen recorder that includes a visible clock. Never capture secrets or private account content.

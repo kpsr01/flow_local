@@ -18,7 +18,7 @@ User focuses a text field
 → speaks naturally, including fillers and self-corrections
 → releases the shortcut
 → local ASR produces the raw transcript
-→ S1-mini cleans and formats the transcript
+→ LFM2.5 cleans and formats the transcript
 → the app detects the active application or website
 → the app selects an appropriate output style
 → the cleaned text is inserted into the original text field
@@ -98,10 +98,10 @@ Audio capture must not block the UI thread.
 Use:
 
 ```text
-Model: nemotron-speech-streaming-en-0.6b
-Runtime: Microsoft Foundry Local
+Model: moonshine-streaming-medium (moonshine-ai/moonshine-streaming ONNX export, onnx/medium)
+Runtime: Microsoft.ML.OnnxRuntime (CPU) inside FlowLocal.AsrWorker.exe
 Language: English
-Execution: local CPU, GPU, or supported accelerator selected by the runtime
+Execution: local CPU only
 ```
 
 Implement the ASR backend behind an interface:
@@ -117,16 +117,15 @@ public interface IAsrService
 }
 ```
 
-Nemotron can generate partial results internally, but the default user experience must be final-on-release. Partial results should not be inserted into the target application.
-
+Moonshine can generate partial results internally, but the default user experience must be final-on-release. Partial results should not be inserted into the target application.
 ### Transcript Cleanup Model
 
 Use:
 
 ```text
-Model: superwhisper/s1-mini
+Model: LiquidAI/LFM2.5-350M
 Format: GGUF
-Quantization: Q4_K_M
+Quantization: QAD Q4_0 (installer default)
 Runtime: llama.cpp
 C# integration: LLamaSharp or a small managed wrapper around llama.cpp
 Execution: completely local
@@ -141,7 +140,7 @@ Thinking/reasoning mode: disabled
 enable_thinking: false
 ```
 
-Use the official S1-mini system prompt and expected control format from its model documentation. Do not invent a replacement prompt if the model expects a fixed template.
+Use the LFM2.5 ChatML-style chat/control template implemented in `DictationPromptAdapter`; do not invent a different template for this fixed-format cleanup task.
 
 Create a dedicated abstraction:
 
@@ -155,7 +154,7 @@ public interface ITranscriptCleaner
 }
 ```
 
-S1-mini is used only for faithful transcript cleanup and formatting. It must not be asked to perform general rewriting, summarization, or open-ended instruction following.
+LFM2.5 is used only for faithful transcript cleanup and formatting. It must not be asked to perform general rewriting, summarization, or open-ended instruction following.
 
 ### Text Insertion
 
@@ -380,7 +379,7 @@ While recording:
 After release:
 
 1. Finalize the complete ASR transcript.
-2. Send the complete transcript to S1-mini.
+2. Send the complete transcript to LFM2.5.
 3. Insert only the final cleaned result.
 
 This behavior is important because corrections near the end of an utterance can change earlier words.
@@ -642,7 +641,7 @@ History interface requirements:
 - Copy raw text.
 - Paste the cleaned transcript again.
 - Retry ASR from the saved recording.
-- Re-run S1-mini cleanup without rerunning ASR.
+- Re-run LFM2.5 cleanup without rerunning ASR.
 - Play the recording.
 - Export the recording.
 - Delete one entry.
@@ -734,7 +733,7 @@ Use typed errors rather than parsing exception strings in the UI.
 
 # 7. P0 Transcript Intelligence
 
-The S1-mini cleanup stage must implement all behavior in this section.
+The LFM2.5 cleanup stage must implement all behavior in this section.
 
 ## P0.11 Filler-Word Removal
 
@@ -1311,11 +1310,11 @@ public sealed record TranscriptStyle(
     bool UseSmartPunctuation);
 ```
 
-Pass this object into the S1-mini prompt adapter.
+Pass this object into the LFM2.5 prompt adapter.
 
-The adapter must map application categories to the exact style controls supported by S1-mini.
+The adapter must map application categories to the exact style controls supported by LFM2.5.
 
-Do not invent unsupported control tokens. If S1-mini does not support a requested setting directly, enforce only what can be achieved reliably through its documented input format.
+Do not invent unsupported control tokens. If LFM2.5 does not support a requested setting directly, enforce only what can be achieved reliably through its documented input format.
 
 ---
 
@@ -1354,8 +1353,7 @@ Implement the following pipeline.
 8. Create a recoverable session record.
 9. Open the temporary audio file.
 10. Start microphone capture.
-11. Start the Nemotron ASR session.
-12. Display the listening overlay.
+11. Start the Moonshine ASR session.
 ```
 
 ## During Recording
@@ -1364,7 +1362,7 @@ Implement the following pipeline.
 1. Receive microphone audio.
 2. Convert to 16 kHz, 16-bit, mono PCM when required.
 3. Append audio to the recovery file.
-4. Send audio chunks to Nemotron.
+4. Send audio chunks to the ASR worker.
 5. Update the waveform, microphone level, and duration.
 6. Keep partial ASR results internal.
 ```
@@ -1377,7 +1375,7 @@ Implement the following pipeline.
 3. Finalize the audio file.
 4. Complete the ASR session.
 5. Validate the raw transcript.
-6. Send the raw transcript and selected style to S1-mini.
+6. Send the raw transcript and selected style to LFM2.5.
 7. Validate the cleaned result.
 8. Restore and verify the target application.
 9. Insert the cleaned text.
@@ -1388,7 +1386,7 @@ Implement the following pipeline.
 
 ## Cleanup Failure Fallback
 
-If S1-mini fails but ASR succeeds:
+If LFM2.5 fails but ASR succeeds:
 
 ```text
 1. Preserve the raw transcript.
@@ -1797,8 +1795,7 @@ Produce:
 
 The installer must not silently install unrelated software.
 
-Document any Foundry Local prerequisite separately and provide a readiness check inside the application.
-
+Document any speech-model prerequisite separately and provide a readiness check inside the application.
 ---
 
 # 18. Deliverables
@@ -1810,8 +1807,8 @@ Produce all of the following:
 3. Working Windows tray application.
 4. Global push-to-talk.
 5. Hands-free recording.
-6. Nemotron local ASR integration.
-7. S1-mini local cleanup integration.
+6. Moonshine local ASR integration.
+7. LFM2.5 local cleanup integration.
 8. Application and website detection.
 9. Output-style classification.
 10. Reliable insertion and clipboard recovery.
@@ -1916,8 +1913,8 @@ Verify the complete state machine before integrating models.
 Implement:
 
 ```text
-✅ Foundry Local readiness detection
-✅ Nemotron initialization
+✅ Worker readiness detection
+✅ Moonshine initialization
 ✅ Streaming audio input
 ✅ Final result
 ✅ Retry from saved audio
@@ -1929,7 +1926,7 @@ Implement:
 
 ```text
 ✅ llama.cpp integration
-✅ S1-mini loading
+✅ LFM2.5 loading
 ✅ Official prompt adapter
 ✅ Deterministic inference
 ✅ Cleanup validation
@@ -2037,8 +2034,7 @@ The release is complete only when a user can perform this scenario:
 
 2. Select or confirm a microphone.
 
-3. Install or locate the local Nemotron and S1-mini models.
-
+3. Install or locate the local Moonshine and LFM2.5 models.
 4. Focus a Gmail compose field in Chrome.
 
 5. Hold the push-to-talk shortcut.

@@ -10,14 +10,14 @@ This list describes the current implementation rather than the broader project s
 
 ## Models and language
 
-- ASR is English-only and hard-coded to Foundry Local catalog alias `nemotron-speech-streaming-en-0.6b`.
-- All Foundry Local interop runs inside the `FlowLocal.AsrWorker.exe` companion process. A stalled or natively-crashing model runtime is contained there; the worker is killed and transparently respawned for the next dictation, and a wedged session degrades into a typed ASR failure with saved audio for retry.
-- The worker prefers a non-CUDA execution-provider variant when the catalog offers one. The CUDA build of the streaming Nemotron model has been observed to abort natively mid-session on some consumer GPUs (for example GeForce MX450); on such machines the CPU variant is selected automatically.
-- Foundry Local must be installed separately. FlowLocal has no independent prerequisite installer, catalog selector, cache path, execution-provider selector, or in-app initialization retry.
-- The first startup may require the network while Foundry Local installs execution-provider assets and downloads the model; first initialization can take a few minutes and is retried once in a fresh worker process before failing visibly.
-- S1-mini must be supplied manually as one GGUF path in `FLOWLOCAL_S1_MODEL_PATH`. There is no download flow, file picker, integrity/license check, or application-local model discovery.
-- S1-mini runs through LLamaSharp's CPU backend with `GpuLayerCount = 0`, a 4096-token context, greedy decoding, and no runtime tuning UI. Cleanup typically costs ~1.3–1.5 s on a modern laptop CPU. Setting `FLOWLOCAL_S1_GPU=1` opts into full GPU offload, which was observed to be slower and process-fatal on an MX450-class GPU; it remains available for experimentation and falls back to CPU automatically.
-- The prompt adapter uses the current repository's fixed chat/control template; this repository does not establish that it is the model publisher's official S1-mini system prompt. Model-specific cleanup fidelity therefore requires manual validation.
+- ASR is English-only and hard-coded to Moonshine streaming-medium (`moonshine-ai/moonshine-streaming` ONNX export, `onnx/medium`).
+- All Moonshine ONNX inference runs inside the `FlowLocal.AsrWorker.exe` companion process. A stalled or natively-crashing model runtime is contained there; the worker is killed and transparently respawned for the next dictation, and a wedged session degrades into a typed ASR failure with saved audio for retry.
+- Inference uses the CPU execution provider only; no GPU selection or tuning exists.
+- The worker buffers session audio in memory and transcribes once at release; very long sessions (minutes of continuous speech) grow encoder memory quadratically and are capped by the completion timeout rather than an explicit duration limit.
+- The first startup may require the network while the worker downloads the model files; first initialization can take a few minutes and is retried once in a fresh worker process before failing visibly.
+- When running from source without the installer, a cleanup GGUF must be supplied manually: one file in `%LOCALAPPDATA%\FlowLocal\Models` or an explicit path in `FLOWLOCAL_CLEANUP_MODEL_PATH`. There is no in-app download flow, file picker, integrity/license check, or model discovery beyond that directory.
+- The cleanup model runs through LLamaSharp's CPU backend by default (`GpuLayerCount = 0`) with a 4096-token context, greedy decoding, and no runtime tuning UI. Setting `FLOWLOCAL_LFM_GPU=1` opts into full GPU offload, which was observed to be slower and process-fatal on an MX450-class GPU; it remains available for experimentation and falls back to CPU automatically.
+- The prompt adapter uses the repository's fixed LFM2.5 ChatML-style chat/control template; this repository does not establish that it is the model publisher's officially documented prompt. Model-specific cleanup fidelity therefore requires manual validation.
 - Cleanup retries once and then falls back to the raw transcript. A fallback session is marked `CleanupFailed`; unchanged text is not a cleanup-success claim.
 
 ## Microphone and shortcut
@@ -56,6 +56,6 @@ This list describes the current implementation rather than the broader project s
 ## UI and diagnostics
 
 - The Settings window contains General, Shortcuts, Microphone, Application styles, History/privacy, and Models-and-diagnostics sections. Appearance settings and a comprehensive diagnostics page (structured log viewer, diagnostics export) are absent; the diagnostics section shows version/runtime/model/microphone status only.
-- Startup failure disables dictation, but the shortcut-time unavailable message names Foundry Local even when another initialization prerequisite (such as S1-mini) caused the failure.
+- Startup failure disables dictation, but the shortcut-time unavailable message names the speech model generically even when another initialization prerequisite (such as the cleanup model) caused the failure.
 - Model readiness is represented by startup overlay success/failure plus the Models-and-diagnostics settings section rather than a full readiness page with load/unload controls.
 - There is no built-in benchmark runner. Use the linked manual documents and record evidence before making compatibility, latency, UI-freeze, or memory-stability claims.

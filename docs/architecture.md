@@ -20,9 +20,9 @@ flowchart LR
   X --> S[Classify output style]
   C --> A[WASAPI capture]
   A --> W[PCM WAV recovery file]
-  A --> N[Foundry Local Nemotron stream]
+  A --> N[Moonshine ONNX worker stream]
   N --> R[Raw transcript]
-  R --> L[Local S1-mini cleanup]
+  R --> L[Local LFM2.5 cleanup]
   S --> L
   L --> V[Validate cleaned result]
   V --> I[Restore and validate target]
@@ -30,19 +30,19 @@ flowchart LR
   C --> D[(SQLite history)]
 ```
 
-On shortcut-down, `GlobalShortcutService` posts to the UI dispatcher. `DictationController` captures the foreground target, detects context, resolves style, creates a recoverable history row and WAV file, starts Foundry streaming ASR, and starts WASAPI capture. Audio is written to the WAV and streamed to ASR.
+On shortcut-down, `GlobalShortcutService` posts to the UI dispatcher. `DictationController` captures the foreground target, detects context, resolves style, creates a recoverable history row and WAV file, starts an ASR session in `FlowLocal.AsrWorker.exe`, and starts WASAPI capture. Audio is written to the WAV and streamed to the worker.
 
-On shortcut-up, capture stops and the WAV is finalized. ASR produces the complete English transcript. `S1MiniTranscriptCleaner` formats it using the resolved `TranscriptStyle`; `CleanupResultValidator` rejects empty, suspiciously expanded, refusal-like, or leaked-control-token output. Cleanup is attempted twice, then falls back to the raw transcript with a recorded cleanup error.
+On shortcut-up, capture stops and the WAV is finalized. ASR produces the complete English transcript. `LfmTranscriptCleaner` formats it using the resolved `TranscriptStyle`; `CleanupResultValidator` rejects empty, suspiciously expanded, refusal-like, or leaked-control-token output. Cleanup is attempted twice, then falls back to the raw transcript with a recorded cleanup error.
 
 Before insertion, `ActiveTargetTracker` restores and validates the captured target. `ClipboardTextInsertionService` tries safe UI Automation, transactional clipboard paste, then Unicode `SendInput`. Terminal targets skip UI Automation and do not proceed past a failed or ambiguous paste. It refuses password/protected targets, higher/unknown integrity injection, mismatched focused elements, and stale targets. Clipboard-only fallback preserves the text for manual paste rather than claiming insertion succeeded.
 
 ## Local model boundaries
 
-`FoundryLocalAsrService` uses Foundry Local's catalog alias `nemotron-speech-streaming-en-0.6b`. Foundry Local owns execution-provider installation, model caching/loading, and device selection. FlowLocal supplies 16 kHz, 16-bit, mono PCM and requests English transcription.
+`MoonshineAsrService` is a thin stdio client for the headless `FlowLocal.AsrWorker.exe` process, which runs [Moonshine streaming-medium](https://huggingface.co/moonshine-ai/moonshine-streaming-medium) through Microsoft.ML.OnnxRuntime (CPU). Audio accumulates as 16 kHz mono float PCM during a session; at release the worker runs the frontend/encoder/adapter graphs over the full buffer and greedy-decodes with `decoder_kv.onnx`, so results are final-on-release. Missing model files are downloaded from Hugging Face at first init into `%LOCALAPPDATA%\FlowLocal\Models\moonshine-streaming-medium`.
 
-`S1MiniTranscriptCleaner` uses LLamaSharp and its CPU backend. It reads exactly one model location from `FLOWLOCAL_S1_MODEL_PATH`, uses a 4096-token context, greedy sampling, and no GPU layers. It neither downloads nor searches for the GGUF.
+`LfmTranscriptCleaner` uses LLamaSharp. It reads the model from `FLOWLOCAL_CLEANUP_MODEL_PATH`, falling back to the most recently written `.gguf` in `%LOCALAPPDATA%\FlowLocal\Models`. It uses a 4096-token context, greedy sampling, and CPU inference by default; setting `FLOWLOCAL_LFM_GPU=1` requests full GPU offload with automatic fallback to CPU. It neither downloads the GGUF nor searches beyond that directory.
 
-Both inference stages are local after prerequisites are present. First-time Foundry setup/model acquisition and normal package installation can use the network.
+Both inference stages are local after prerequisites are present. First-time speech-model acquisition and normal package installation can use the network.
 
 ## Context detection and classification
 

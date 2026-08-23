@@ -1,13 +1,13 @@
 # FlowLocal
 
-FlowLocal is a Windows 11 x64 WPF dictation application. Hold the global shortcut, speak into the Windows default recording device, and release to run English speech recognition locally, clean the transcript with a local LFM2.5-350M GGUF model, classify the active target, and insert the result. The application is still awaiting the documented manual compatibility and performance runs; see [Known limitations](docs/known-limitations.md).
+FlowLocal is a Windows 11 x64 WPF dictation application. Hold the global shortcut, speak into the Windows default recording device, and release to run English speech recognition locally, clean the transcript with a local S1-mini GGUF model, classify the active target, and insert the result. The application is still awaiting the documented manual compatibility and performance runs; see [Known limitations](docs/known-limitations.md).
 
 ## System requirements
 
 - Windows 11 x64. The projects target `net9.0-windows10.0.26100.0`; Windows 10 is not a supported target.
 - .NET 9 SDK to build or run from source. A self-contained packaged build does not require a separately installed .NET runtime.
 - A working Windows recording device and microphone permission for desktop applications.
-- Disk space and memory for the app, the Moonshine streaming-medium ONNX models (~296 MB in `%LOCALAPPDATA%\FlowLocal\Models\moonshine-streaming-medium`), and the LFM2.5 cleanup GGUF.
+- Disk space and memory for the app, the Moonshine streaming-medium ONNX models (~296 MB in `%LOCALAPPDATA%\FlowLocal\Models\moonshine-streaming-medium`), and the S1-mini cleanup GGUF (~462 MB).
 - Internet access for initial NuGet restore and the first speech-model download. Dictation inference is local after those assets are installed.
 
 ## Speech model
@@ -16,18 +16,18 @@ ASR runs [Moonshine streaming-medium](https://huggingface.co/moonshine-ai/moonsh
 
 ## Cleanup model installation
 
-The cleanup stage uses LiquidAI's **LFM2.5-350M** as a GGUF loaded by LLamaSharp's CPU backend. A normal install downloads `LFM2.5-350M-QAD-Q4_0.gguf` into `%LOCALAPPDATA%\FlowLocal\Models` during setup; no environment variable is required.
+The cleanup stage uses [S1-mini by Superwhisper](https://huggingface.co/superwhisper/s1-mini-GGUF) (`s1-mini-q4_k_m.gguf`, Q4_K_M) loaded by LLamaSharp's CPU backend. A normal install downloads it into `%LOCALAPPDATA%\FlowLocal\Models` during setup; no environment variable is required.
 
-When running from source without the installer, either drop any compatible LFM2.5 GGUF into `%LOCALAPPDATA%\FlowLocal\Models` (the most recently written `.gguf` there is used) or point at one explicit file:
+When running from source without the installer, either place `s1-mini-q4_k_m.gguf` into `%LOCALAPPDATA%\FlowLocal\Models` or point at one explicit file:
 
 ```powershell
 [Environment]::SetEnvironmentVariable(
   "FLOWLOCAL_CLEANUP_MODEL_PATH",
-  "C:\Models\LFM2.5-350M-QAD-Q4_0.gguf",
+  "C:\Models\s1-mini-q4_k_m.gguf",
   "User")
 ```
 
-Restart the shell or Explorer-launched application after changing the user environment variable. There is no in-app model picker. The app loads the model with a 4096-token context and CPU inference by default; set `FLOWLOCAL_LFM_GPU=1` to experiment with full GPU offload (it falls back to CPU automatically).
+Restart the shell or Explorer-launched application after changing the user environment variable. There is no in-app model picker. The app sends every transcript through S1-mini's official system prompt and trained control-line format (Qwen3 template with thinking disabled), decodes greedily at temperature 0 with `max_new_tokens ~= 1.3 x input_tokens + 32`, and keeps the model loaded between requests on an 8192-token context; set `FLOWLOCAL_CLEANUP_GPU=1` to experiment with full GPU offload (it falls back to CPU automatically).
 
 ## Build instructions
 
@@ -67,7 +67,7 @@ FlowLocal starts in the notification area. Right-click its tray icon for **Setti
 
 ## First-run setup
 
-1. Install FlowLocal normally (the installer downloads the Moonshine ONNX files and the cleanup GGUF), or run once from source with network access so the worker can fetch the speech model into `%LOCALAPPDATA%\FlowLocal\Models\moonshine-streaming-medium`, and place an LFM2.5 GGUF in `%LOCALAPPDATA%\FlowLocal\Models` or set `FLOWLOCAL_CLEANUP_MODEL_PATH` as shown above.
+1. Install FlowLocal normally (the installer downloads the Moonshine ONNX files and the cleanup GGUF), or run once from source with network access so the worker can fetch the speech model into `%LOCALAPPDATA%\FlowLocal\Models\moonshine-streaming-medium`, and place `s1-mini-q4_k_m.gguf` in `%LOCALAPPDATA%\FlowLocal\Models` or set `FLOWLOCAL_CLEANUP_MODEL_PATH` as shown above.
 2. In Windows, select and test the intended default input device and allow desktop-app microphone access.
 3. Start FlowLocal and wait for the initialization overlay to disappear. The worker may download and warm up the Moonshine model on this first run; the cleanup model is then loaded from its discovered or configured file.
 4. Open **Settings**, review Application styles and History/privacy defaults, then use **Test current target** while the intended target is active.

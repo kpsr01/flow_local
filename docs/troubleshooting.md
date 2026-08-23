@@ -24,7 +24,7 @@ If the variable is unset, FlowLocal looks for a `.gguf` file in `%LOCALAPPDATA%\
 
 ### Cleanup model fails to load
 
-The file may be incomplete or incompatible with LLamaSharp/llama.cpp, or too large for available memory. Re-download a compatible LiquidAI LFM2.5-350M GGUF; the installer uses the QAD Q4_0 quantization. Inference runs on CPU by default; setting `FLOWLOCAL_LFM_GPU=1` enables experimental full GPU offload with automatic fallback to CPU.
+The file may be incomplete or incompatible with LLamaSharp/llama.cpp, or too large for available memory. Re-download `s1-mini-q4_k_m.gguf` from [superwhisper/s1-mini-GGUF](https://huggingface.co/superwhisper/s1-mini-GGUF) (Q4_K_M, the quantization the published accuracy was measured on). Inference runs on CPU by default; setting `FLOWLOCAL_CLEANUP_GPU=1` enables experimental full GPU offload with automatic fallback to CPU.
 
 ### Speech recognition fails or the app previously crashed while transcribing
 

@@ -59,7 +59,7 @@ public partial class MainWindow : Window
     private GlobalShortcutService? _shortcut;
     private WasapiAudioCaptureService? _audio;
     private MoonshineAsrService? _asr;
-    private LfmTranscriptCleaner? _cleaner;
+    private S1MiniTranscriptCleaner? _cleaner;
     private Action<AppSettings>? _applyAppSettings;
     private IReadOnlyList<MicrophoneDeviceInfo> _microphones = [];
 
@@ -139,7 +139,7 @@ public partial class MainWindow : Window
         GlobalShortcutService shortcut,
         WasapiAudioCaptureService audio,
         MoonshineAsrService asr,
-        LfmTranscriptCleaner cleaner,
+        S1MiniTranscriptCleaner cleaner,
         Action<AppSettings> applyAppSettings)
     {
         _appSettings = appSettings ?? throw new ArgumentNullException(nameof(appSettings));
@@ -309,7 +309,7 @@ public partial class MainWindow : Window
             : status.Provider is { Length: > 0 } provider ? $"{status.State} — {provider}" : status.State.ToString();
         CleanupBackendText.Text = _cleaner is null ? "—" :
             $"{_cleaner.DisplayName}{(_cleaner.IsLoaded ? $" — {_cleaner.ExecutionTarget}" : " — not loaded yet")}";
-        CleanupPathText.Text = LfmTranscriptCleaner.ConfiguredModelPath
+        CleanupPathText.Text = S1MiniTranscriptCleaner.ConfiguredModelPath
             ?? "Set FLOWLOCAL_CLEANUP_MODEL_PATH to a local GGUF file.";
         if (_audio is not null && FollowDefaultMicCheckBox is not null)
         {

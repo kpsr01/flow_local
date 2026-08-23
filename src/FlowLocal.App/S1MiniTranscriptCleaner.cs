@@ -7,7 +7,7 @@ using LLama.Sampling;
 
 namespace FlowLocal.App;
 
-public sealed class LfmTranscriptCleaner : ITranscriptCleaner, ICleanupBackend, IDisposable
+public sealed class S1MiniTranscriptCleaner : ITranscriptCleaner, ICleanupBackend, IDisposable
 {
     private const string ModelPathVariable = "FLOWLOCAL_CLEANUP_MODEL_PATH";
     private readonly SemaphoreSlim initializationLock = new(1, 1);
@@ -15,8 +15,8 @@ public sealed class LfmTranscriptCleaner : ITranscriptCleaner, ICleanupBackend, 
     private LLamaWeights? weights;
     private ModelParams? modelParameters;
 
-    public string BackendId => "lfm25-cleanup-llamasharp";
-    public string DisplayName => "LFM2.5-350M (local GGUF)";
+    public string BackendId => "s1-mini-cleanup-llamasharp";
+    public string DisplayName => "S1-mini by Superwhisper (local GGUF)";
 
     /// <summary>Configured GGUF path from FLOWLOCAL_CLEANUP_MODEL_PATH, when set.</summary>
     public static string? ConfiguredModelPath =>
@@ -52,24 +52,23 @@ public sealed class LfmTranscriptCleaner : ITranscriptCleaner, ICleanupBackend, 
         try
         {
             var executor = new StatelessExecutor(weights!, modelParameters!);
+            var prompt = DictationPromptAdapter.Build(transcript, style);
+            // Model card: max_new_tokens ~= 1.3 x input_tokens + 32.
+            var inputTokens = weights!.Tokenize(prompt, add_bos: false, special: false, Encoding.UTF8).Length;
             var output = new StringBuilder();
             var inference = new InferenceParams
             {
-                // ~4 chars per token spoken -> allow ~2x that in output tokens,
-                // min 128, never below what a long dictation needs.
-                MaxTokens = Math.Clamp(transcript.Text.Length / 2, 128, 2048),
-                // Greedy (Temperature = 0) for fidelity; the repeat penalty stops
-                // the 350M model from looping/duplicating words mid-output.
+                MaxTokens = (int)(inputTokens * 1.3 + 32),
+                // Greedy decoding (temperature 0): normalization is deterministic
+                // and the model is trained for greedy; no repeat penalty or other
+                // samplers on top.
                 SamplingPipeline = new DefaultSamplingPipeline
                 {
                     Temperature = 0,
-                    RepeatPenalty = 1.1f,
                 },
-                AntiPrompts = ["<|im_end|>", "<|endoftext|>"]
             };
 
-            await foreach (var text in executor.InferAsync(
-                DictationPromptAdapter.Build(transcript, style), inference, cancellationToken).ConfigureAwait(false))
+            await foreach (var text in executor.InferAsync(prompt, inference, cancellationToken).ConfigureAwait(false))
             {
                 output.Append(text);
             }
@@ -109,11 +108,11 @@ public sealed class LfmTranscriptCleaner : ITranscriptCleaner, ICleanupBackend, 
                 throw new FileNotFoundException("The configured GGUF cleanup model was not found.", modelPath);
             }
 
-            // CPU is the stable default on every machine. Set FLOWLOCAL_LFM_GPU=1 to
+            // CPU is the stable default on every machine. Set FLOWLOCAL_CLEANUP_GPU=1 to
             // experiment with full GPU offload (falls back to CPU automatically).
             var threads = Math.Max(4, Environment.ProcessorCount);
             var gpuRequested = string.Equals(
-                Environment.GetEnvironmentVariable("FLOWLOCAL_LFM_GPU"), "1", StringComparison.OrdinalIgnoreCase);
+                Environment.GetEnvironmentVariable("FLOWLOCAL_CLEANUP_GPU"), "1", StringComparison.OrdinalIgnoreCase);
             int[] offloadPlan = gpuRequested ? [99, 0] : [0];
             foreach (var gpuLayers in offloadPlan)
             {
@@ -165,15 +164,17 @@ public sealed class LfmTranscriptCleaner : ITranscriptCleaner, ICleanupBackend, 
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "FlowLocal", "Models");
         if (!Directory.Exists(modelsDir)) return null;
-        return Directory.GetFiles(modelsDir, "*.gguf", SearchOption.TopDirectoryOnly)
-            .OrderBy(File.GetLastWriteTimeUtc)
-            .FirstOrDefault();
+        var candidates = Directory.GetFiles(modelsDir, "*.gguf", SearchOption.TopDirectoryOnly);
+        // Prefer S1-mini so an upgraded install that still carries the old
+        // cleanup GGUF loads the right model.
+        return candidates.FirstOrDefault(f => Path.GetFileName(f).StartsWith("s1-mini", StringComparison.OrdinalIgnoreCase))
+            ?? candidates.OrderByDescending(File.GetLastWriteTimeUtc).FirstOrDefault();
     }
 
     public void Dispose()
     {
         weights?.Dispose();
-        initializationLock.Dispose();
-        inferenceLock.Dispose();
+        weights = null;
+        modelParameters = null;
     }
 }

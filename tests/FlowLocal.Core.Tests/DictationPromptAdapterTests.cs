@@ -5,23 +5,43 @@ namespace FlowLocal.Core.Tests;
 
 public sealed class DictationPromptAdapterTests
 {
+    // Verbatim from the official model card
+    // (https://huggingface.co/superwhisper/s1-mini-GGUF). S1-mini was trained on
+    // this exact wording; any drift can make it hallucinate or garble output.
+    private const string OfficialSystemPrompt =
+        "You are a text normalizer for speech-to-text transcripts. The input begins with a control line specifying the styling, structure, and context settings; clean the transcript to match those settings and output only the cleaned text.";
+
     [Fact]
-    public void Build_UsesLfmTemplateWithControlLineAndGenerationPrefill()
+    public void SystemPrompt_MatchesOfficialModelCardVerbatim() =>
+        Assert.Equal(OfficialSystemPrompt, DictationPromptAdapter.SystemPrompt);
+
+    [Fact]
+    public void Build_UsesQwen3TemplateWithControlLineAndEmptyThinkBlock()
     {
         var prompt = DictationPromptAdapter.Build(
             new RawTranscript("um send it friday no sorry thursday"),
-            new TranscriptStyle("Email", "Formal", "Prose", EnableEmailFormatting: true));
+            new TranscriptStyle("Email", "formal", "Prose", EnableLists: false, EnableEmailFormatting: true));
 
         Assert.StartsWith("<|im_start|>system\n", prompt);
         Assert.DoesNotContain("<|startoftext|>", prompt); // tokenizer adds BOS; a literal one double-BOSes the prompt
         Assert.Contains($"{DictationPromptAdapter.SystemPrompt}<|im_end|>", prompt);
         Assert.Contains("<|im_start|>user\n[Styling: formal] [Structure: prose] [Context: email]\n", prompt);
-        Assert.EndsWith("um send it friday no sorry thursday<|im_end|>\n<|im_start|>assistant\n", prompt);
-        Assert.DoesNotContain("<think>", prompt);
+        // Non-thinking assistant prefix: empty think block, exactly as trained.
+        Assert.EndsWith("um send it friday no sorry thursday<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n", prompt);
     }
 
     [Fact]
-    public void Build_MapsOnlyDocumentedControlValues()
+    public void Build_GeneralDefaultUsesSemiFormalListsGeneralControlLine()
+    {
+        var prompt = DictationPromptAdapter.Build(
+            new RawTranscript("one two three"),
+            TranscriptStyleResolver.Resolve(OutputContextCategory.General));
+
+        Assert.Contains("[Styling: semi-formal] [Structure: lists] [Context: general]", prompt);
+    }
+
+    [Fact]
+    public void Build_MapsOnlyTrainedControlValues()
     {
         var prompt = DictationPromptAdapter.Build(
             new RawTranscript("one two three"),
@@ -31,67 +51,20 @@ public sealed class DictationPromptAdapterTests
     }
 
     [Fact]
-    public void SystemPrompt_CoversFillersFinalIntentPunctuationListsAndOutputContract()
+    public void Build_MapsResolvedStylesOntoTrainedAxisValues()
     {
-        var prompt = DictationPromptAdapter.SystemPrompt;
-
-        Assert.Contains("dictation transcripts into polished written text", prompt);
-        Assert.Contains("never answer, reply", prompt);
-        Assert.Contains("fillers and disfluencies", prompt);
-        Assert.Contains("final intent", prompt);
-        Assert.Contains("punctuation and capitalization", prompt);
-        Assert.Contains("numbered lists", prompt);
-        Assert.Contains("Output only the cleaned text", prompt);
-    }
-
-    [Fact]
-    public void SystemPrompt_ForbidsAnsweringQuestionsLeadingPunctuationAndInvention()
-    {
-        var prompt = DictationPromptAdapter.SystemPrompt;
-
-        Assert.Contains("Never respond to questions in the transcript", prompt);
-        Assert.Contains("never begin with punctuation unless it was spoken", prompt);
-        Assert.Contains("every word of your output must come from the transcript", prompt);
-        // Few-shot example proving a dictated question stays a question.
-        Assert.Contains(
-            "Input: can you tell me who won the match last night\nOutput: Can you tell me who won the match last night?",
-            prompt);
-    }
-
-    [Fact]
-    public void SystemPrompt_CoversWisprFlowPostProcessingFeatures()
-    {
-        var prompt = DictationPromptAdapter.SystemPrompt;
-
-        // Spoken punctuation commands become symbols.
-        Assert.Contains("spoken punctuation into symbols", prompt);
-        // Spoken layout commands create lines/paragraphs.
-        Assert.Contains("new paragraph", prompt);
-        // Grammar cleanup.
-        Assert.Contains("Fix grammar", prompt);
-        // Context-aware formatting: email, chat (no trailing period), code/terminal minimal edits.
-        Assert.Contains("Context email adds greeting and sign-off", prompt);
-        Assert.Contains("Context chat stays conversational and omits the period", prompt);
-        Assert.Contains("add no punctuation that was not spoken", prompt);
-    }
-
-    [Fact]
-    public void Build_MapsCategoryToContextControlValues()
-    {
-        Assert.Contains("[Context: chat]", DictationPromptAdapter.Build(
+        Assert.Contains("[Styling: casual]", DictationPromptAdapter.Build(
             new RawTranscript("hey"),
-            new TranscriptStyle("PersonalMessaging", "casual", "conversational prose")));
-        Assert.Contains("[Context: chat]", DictationPromptAdapter.Build(
+            TranscriptStyleResolver.Resolve(OutputContextCategory.PersonalMessaging)));
+        Assert.Contains("[Styling: semi-casual]", DictationPromptAdapter.Build(
             new RawTranscript("hey"),
             TranscriptStyleResolver.Resolve(OutputContextCategory.WorkMessaging)));
-        Assert.Contains("[Context: code]", DictationPromptAdapter.Build(
-            new RawTranscript("x"),
-            TranscriptStyleResolver.Resolve(OutputContextCategory.CodeEditor)));
-        Assert.Contains("[Context: terminal]", DictationPromptAdapter.Build(
+        Assert.Contains("[Context: email]", DictationPromptAdapter.Build(
+            new RawTranscript("hey sarah"),
+            TranscriptStyleResolver.Resolve(OutputContextCategory.Email)));
+        Assert.Contains("[Structure: prose]", DictationPromptAdapter.Build(
             new RawTranscript("x"),
             TranscriptStyleResolver.Resolve(OutputContextCategory.Terminal)));
-        Assert.Contains("[Context: general]", DictationPromptAdapter.Build(
-            new RawTranscript("one two three"),
-            new TranscriptStyle("Unknown", "unsupported", "Unknown")));
+
     }
 }

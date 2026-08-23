@@ -18,7 +18,7 @@ User focuses a text field
 → speaks naturally, including fillers and self-corrections
 → releases the shortcut
 → local ASR produces the raw transcript
-→ LFM2.5 cleans and formats the transcript
+→ S1-mini cleans and formats the transcript
 → the app detects the active application or website
 → the app selects an appropriate output style
 → the cleaned text is inserted into the original text field
@@ -123,9 +123,9 @@ Moonshine can generate partial results internally, but the default user experien
 Use:
 
 ```text
-Model: LiquidAI/LFM2.5-350M
+Model: superwhisper/s1-mini-GGUF
 Format: GGUF
-Quantization: QAD Q4_0 (installer default)
+Quantization: Q4_K_M (installer default; the build the published accuracy was measured on)
 Runtime: llama.cpp
 C# integration: LLamaSharp or a small managed wrapper around llama.cpp
 Execution: completely local
@@ -140,7 +140,7 @@ Thinking/reasoning mode: disabled
 enable_thinking: false
 ```
 
-Use the LFM2.5 ChatML-style chat/control template implemented in `DictationPromptAdapter`; do not invent a different template for this fixed-format cleanup task.
+Use S1-mini's official system prompt and trained control-line format (Qwen3 chat template with `enable_thinking: false`, i.e. the assistant turn opens with an empty think block) implemented in `DictationPromptAdapter`; do not add extra instructions or invent control values outside the trained sets — the model was trained on that fixed format.
 
 Create a dedicated abstraction:
 
@@ -154,7 +154,7 @@ public interface ITranscriptCleaner
 }
 ```
 
-LFM2.5 is used only for faithful transcript cleanup and formatting. It must not be asked to perform general rewriting, summarization, or open-ended instruction following.
+S1-mini is used only for faithful transcript cleanup and formatting. It must not be asked to perform general rewriting, summarization, or open-ended instruction following.
 
 ### Text Insertion
 
@@ -379,7 +379,7 @@ While recording:
 After release:
 
 1. Finalize the complete ASR transcript.
-2. Send the complete transcript to LFM2.5.
+2. Send the complete transcript to S1-mini.
 3. Insert only the final cleaned result.
 
 This behavior is important because corrections near the end of an utterance can change earlier words.
@@ -641,7 +641,7 @@ History interface requirements:
 - Copy raw text.
 - Paste the cleaned transcript again.
 - Retry ASR from the saved recording.
-- Re-run LFM2.5 cleanup without rerunning ASR.
+- Re-run S1-mini cleanup without rerunning ASR.
 - Play the recording.
 - Export the recording.
 - Delete one entry.
@@ -733,7 +733,7 @@ Use typed errors rather than parsing exception strings in the UI.
 
 # 7. P0 Transcript Intelligence
 
-The LFM2.5 cleanup stage must implement all behavior in this section.
+The S1-mini cleanup stage must implement all behavior in this section.
 
 ## P0.11 Filler-Word Removal
 
@@ -1310,11 +1310,11 @@ public sealed record TranscriptStyle(
     bool UseSmartPunctuation);
 ```
 
-Pass this object into the LFM2.5 prompt adapter.
+Pass this object into the S1-mini prompt adapter.
 
-The adapter must map application categories to the exact style controls supported by LFM2.5.
+The adapter must map application categories to the exact style controls supported by S1-mini.
 
-Do not invent unsupported control tokens. If LFM2.5 does not support a requested setting directly, enforce only what can be achieved reliably through its documented input format.
+Do not invent unsupported control tokens. If S1-mini does not support a requested setting directly, enforce only what can be achieved reliably through its documented input format.
 
 ---
 
@@ -1375,7 +1375,7 @@ Implement the following pipeline.
 3. Finalize the audio file.
 4. Complete the ASR session.
 5. Validate the raw transcript.
-6. Send the raw transcript and selected style to LFM2.5.
+6. Send the raw transcript and selected style to S1-mini.
 7. Validate the cleaned result.
 8. Restore and verify the target application.
 9. Insert the cleaned text.
@@ -1386,7 +1386,7 @@ Implement the following pipeline.
 
 ## Cleanup Failure Fallback
 
-If LFM2.5 fails but ASR succeeds:
+If S1-mini fails but ASR succeeds:
 
 ```text
 1. Preserve the raw transcript.
@@ -1808,7 +1808,7 @@ Produce all of the following:
 4. Global push-to-talk.
 5. Hands-free recording.
 6. Moonshine local ASR integration.
-7. LFM2.5 local cleanup integration.
+7. S1-mini local cleanup integration.
 8. Application and website detection.
 9. Output-style classification.
 10. Reliable insertion and clipboard recovery.
@@ -1926,7 +1926,7 @@ Implement:
 
 ```text
 ✅ llama.cpp integration
-✅ LFM2.5 loading
+✅ S1-mini loading
 ✅ Official prompt adapter
 ✅ Deterministic inference
 ✅ Cleanup validation
@@ -2034,7 +2034,7 @@ The release is complete only when a user can perform this scenario:
 
 2. Select or confirm a microphone.
 
-3. Install or locate the local Moonshine and LFM2.5 models.
+3. Install or locate the local Moonshine and S1-mini models.
 4. Focus a Gmail compose field in Chrome.
 
 5. Hold the push-to-talk shortcut.

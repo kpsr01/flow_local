@@ -20,11 +20,11 @@ Check the variable in the same account/environment used to launch FlowLocal:
 Test-Path $env:FLOWLOCAL_CLEANUP_MODEL_PATH
 ```
 
-If the variable is unset, FlowLocal looks for a `.gguf` file in `%LOCALAPPDATA%\FlowLocal\Models` (where the installer downloads it), preferring a file named `mumble-cleanup-2stage-q4_0.gguf`. If the first command has a path but `$env:` is empty, start a new shell or restart Explorer before launching the app. The value must be a full path to one readable GGUF file, not a directory.
+If the variable is unset, FlowLocal looks for a `.gguf` file in `%LOCALAPPDATA%\FlowLocal\Models` (where the installer places it), preferring a file named `sotto-cleanup-lfm25-350m-q4_k_m.gguf`. If the first command has a path but `$env:` is empty, start a new shell or restart Explorer before launching the app. The value must be a full path to one readable GGUF file, not a directory.
 
 ### Cleanup model fails to load
 
-The file may be incomplete or incompatible with LLamaSharp/llama.cpp, or too large for available memory. Re-download `mumble-cleanup-2stage-q4_0.gguf` from [trevornk/mumble-cleanup-2stage-GGUF](https://huggingface.co/trevornk/mumble-cleanup-2stage-GGUF) (Q4_0, the quantization the repo recommends for CPU latency; SHA-256 `000efc700d74636bc3885afe1d8f32dbb3fe813b8198dea79d8fd73efcc2c711`). Inference runs on CPU by default; setting `FLOWLOCAL_CLEANUP_GPU=1` enables experimental full GPU offload with automatic fallback to CPU.
+The file may be incomplete or incompatible with LLamaSharp/llama.cpp, or too large for available memory. Rebuild it from the [sotto-cleanup-lfm25-350m](https://huggingface.co/juanquivilla/sotto-cleanup-lfm25-350m) BF16 checkpoint: `python convert_hf_to_gguf.py <checkpoint-dir> --outfile m.gguf --outtype bf16`, then `llama-quantize m.gguf sotto-cleanup-lfm25-350m-q4_k_m.gguf Q4_K_M` (llama.cpp b10603 or newer for LFM2 support). The deployed copy's SHA-256 is `6cd4dfed74fa20121a3144866fdc3853a680b764f21f2eaaa83811c396f00f3a`. Inference runs on CPU by default; setting `FLOWLOCAL_CLEANUP_GPU=1` enables experimental full GPU offload with automatic fallback to CPU.
 
 ### Speech recognition fails or the app previously crashed while transcribing
 

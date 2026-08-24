@@ -7,7 +7,7 @@ using LLama.Sampling;
 
 namespace FlowLocal.App;
 
-public sealed class MumbleTranscriptCleaner : ITranscriptCleaner, ICleanupBackend, IDisposable
+public sealed class SottoTranscriptCleaner : ITranscriptCleaner, ICleanupBackend, IDisposable
 {
     private const string ModelPathVariable = "FLOWLOCAL_CLEANUP_MODEL_PATH";
     private readonly SemaphoreSlim initializationLock = new(1, 1);
@@ -15,8 +15,8 @@ public sealed class MumbleTranscriptCleaner : ITranscriptCleaner, ICleanupBacken
     private LLamaWeights? weights;
     private ModelParams? modelParameters;
 
-    public string BackendId => "mumble-cleanup-2stage-llamasharp";
-    public string DisplayName => "Mumble cleanup 2-stage (local GGUF)";
+    public string BackendId => "sotto-cleanup-lfm25-350m-llamasharp";
+    public string DisplayName => "Sotto cleanup LFM2.5-350M (local GGUF)";
 
     /// <summary>Configured GGUF path from FLOWLOCAL_CLEANUP_MODEL_PATH, when set.</summary>
     public static string? ConfiguredModelPath =>
@@ -54,16 +54,25 @@ public sealed class MumbleTranscriptCleaner : ITranscriptCleaner, ICleanupBacken
             var executor = new StatelessExecutor(weights!, modelParameters!);
             var prompt = DictationPromptAdapter.Build(transcript);
             var inputTokens = weights!.Tokenize(prompt, add_bos: false, special: false, Encoding.UTF8).Length;
+            // Model card production settings: max_new_tokens >= 1.5 x input word count,
+            // minimum 900, so long inputs always have headroom.
+            var inputWords = transcript.Text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Length;
             var output = new StringBuilder();
             var inference = new InferenceParams
             {
-                MaxTokens = (int)(inputTokens * 1.3 + 32),
-                // Greedy decoding (temperature 0): the model card runs --temp 0.
-                // Cleanup is deterministic and never longer than the input plus
-                // punctuation, so no repeat penalty or other samplers on top.
+                // Greedy decoding (do_sample=False) with repetition_penalty=1.05, both
+                // from the model card. PenaltyCount covers the whole max-output window,
+                // matching the Hugging Face reference (full-context penalties); llama.cpp
+                // otherwise only penalizes the last 64 tokens. ponytail: rare n-gram loops
+                // can still occur on pathological verbatim-repetition inputs — inherent
+                // model limit at the recommended penalty; CleanupResultValidator plus the
+                // raw-transcript fallback bound the damage.
+                AntiPrompts = ["###"],
                 SamplingPipeline = new DefaultSamplingPipeline
                 {
                     Temperature = 0,
+                    RepeatPenalty = 1.05f,
+                    PenaltyCount = Math.Max(900, (int)Math.Ceiling(inputWords * 1.5)),
                 },
             };
 
@@ -164,9 +173,9 @@ public sealed class MumbleTranscriptCleaner : ITranscriptCleaner, ICleanupBacken
             "FlowLocal", "Models");
         if (!Directory.Exists(modelsDir)) return null;
         var candidates = Directory.GetFiles(modelsDir, "*.gguf", SearchOption.TopDirectoryOnly);
-        // Prefer mumble-cleanup so an upgraded install that still carries an old
+        // Prefer sotto-cleanup so an upgraded install that still carries an old
         // cleanup GGUF loads the right model.
-        return candidates.FirstOrDefault(f => Path.GetFileName(f).StartsWith("mumble-cleanup", StringComparison.OrdinalIgnoreCase))
+        return candidates.FirstOrDefault(f => Path.GetFileName(f).StartsWith("sotto-cleanup", StringComparison.OrdinalIgnoreCase))
             ?? candidates.OrderByDescending(File.GetLastWriteTimeUtc).FirstOrDefault();
     }
 

@@ -30,7 +30,7 @@ WizardStyle=modern
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Messages]
-WelcomeLabel2=This will install [name/ver], a private, local dictation assistant.%n%nEverything runs on this PC: speech recognition and text cleanup never touch the cloud.%n%nThe installer also downloads the speech-recognition and text-cleanup models (roughly 800 MB total). An internet connection is required once.
+WelcomeLabel2=This will install [name/ver], a private, local dictation assistant.%n%nEverything runs on this PC: speech recognition and text cleanup never touch the cloud.%n%nThe installer also downloads the speech-recognition and text-cleanup models (roughly 650 MB total). An internet connection is required once.
 SelectDirDesc=Where should FlowLocal be installed?
 FinishedLabelNoIcons=[name] has been installed. The dictation capsule is running in your system tray - hold Ctrl+Win anywhere and speak.
 FinishedLabel=[name] has been installed. The dictation capsule is running in your system tray - hold Ctrl+Win anywhere and speak.
@@ -63,9 +63,13 @@ Source: "https://huggingface.co/moonshine-ai/moonshine-streaming/resolve/main/on
 Source: "https://huggingface.co/moonshine-ai/moonshine-streaming/resolve/main/onnx/medium/tokenizer.json"; \
     DestDir: "{localappdata}\FlowLocal\Models\moonshine-streaming-medium"; DestName: "tokenizer.json"; ExternalSize: 1985533; \
     Flags: external download ignoreversion; Check: Not MoonshineModelPresent()
-Source: "https://huggingface.co/superwhisper/s1-mini-GGUF/resolve/main/s1-mini-q4_k_m.gguf"; \
-    DestDir: "{localappdata}\FlowLocal\Models"; DestName: "s1-mini-q4_k_m.gguf"; ExternalSize: 484219808; \
+Source: "https://huggingface.co/trevornk/mumble-cleanup-2stage-GGUF/resolve/main/mumble-cleanup-2stage-q4_0.gguf"; \
+    DestDir: "{localappdata}\FlowLocal\Models"; DestName: "mumble-cleanup-2stage-q4_0.gguf"; ExternalSize: 352154912; \
     Flags: external download ignoreversion; Check: Not GgufSkipDownload()
+
+[InstallDelete]
+; Remove the retired S1-mini cleanup model from upgraded installs.
+Type: files; Name: "{localappdata}\FlowLocal\Models\s1-mini-q4_k_m.gguf"
 
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExeName}"
@@ -80,7 +84,7 @@ Filename: "{app}\{#AppExeName}"; Description: "Launch {#AppName} now"; \
 [Code]
 const
   MoonshineModelDir = '{localappdata}\FlowLocal\Models\moonshine-streaming-medium';
-  GgufTarget = '{localappdata}\FlowLocal\Models\s1-mini-q4_k_m.gguf';
+  GgufTarget = '{localappdata}\FlowLocal\Models\mumble-cleanup-2stage-q4_0.gguf';
 
 function MoonshineModelPresent(): Boolean;
 begin

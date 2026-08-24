@@ -17,7 +17,7 @@ public partial class App : Application
     private WasapiAudioCaptureService? _audio;
     private DictationController? _dictation;
     private MoonshineAsrService? _asr;
-    private S1MiniTranscriptCleaner? _cleaner;
+    private MumbleTranscriptCleaner? _cleaner;
     private SqliteHistoryRepository? _history;
     private AppSettingsStore? _appSettings;
     private HistoryActionService? _historyActions;
@@ -67,7 +67,7 @@ public partial class App : Application
         _audio.LevelChanged += OnAudioLevelChanged;
         _audio.FellBackToDefaultDevice += OnMicrophoneFallback;
         _asr = new MoonshineAsrService();
-        _cleaner = new S1MiniTranscriptCleaner();
+        _cleaner = new MumbleTranscriptCleaner();
         _history = new SqliteHistoryRepository();
         _appSettings = new AppSettingsStore();
         var targets = new ActiveTargetTracker();

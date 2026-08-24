@@ -58,7 +58,7 @@ public partial class MainWindow : Window
     private AppSettingsStore? _appSettings;
     private GlobalShortcutService? _shortcut;
     private WasapiAudioCaptureService? _audio;
-    private MoonshineAsrService? _asr;
+    private CanaryAsrService? _asr;
     private SottoTranscriptCleaner? _cleaner;
     private Action<AppSettings>? _applyAppSettings;
     private IReadOnlyList<MicrophoneDeviceInfo> _microphones = [];
@@ -138,7 +138,7 @@ public partial class MainWindow : Window
         AppSettingsStore appSettings,
         GlobalShortcutService shortcut,
         WasapiAudioCaptureService audio,
-        MoonshineAsrService asr,
+        CanaryAsrService asr,
         SottoTranscriptCleaner cleaner,
         Action<AppSettings> applyAppSettings)
     {
@@ -303,7 +303,7 @@ public partial class MainWindow : Window
     {        VersionText.Text = (Assembly.GetEntryAssembly()?.GetCustomAttribute<AssemblyInformationalVersionAttribute>()
                 ?.InformationalVersion ?? Assembly.GetEntryAssembly()?.GetName().Version?.ToString()) ?? "—";
         RuntimeText.Text = $".NET {Environment.Version} — {Environment.OSVersion.VersionString}";
-        AsrModelText.Text = $"{MoonshineAsrService.ModelName} (Moonshine ONNX)";
+        AsrModelText.Text = $"{CanaryAsrService.ModelName} (Canary GGUF · transcribe.cpp CPU)";
         var status = _asr?.Status;
         AsrStateText.Text = status is null ? "—"
             : status.Provider is { Length: > 0 } provider ? $"{status.State} — {provider}" : status.State.ToString();

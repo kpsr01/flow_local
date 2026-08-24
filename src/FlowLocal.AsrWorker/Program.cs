@@ -1,27 +1,26 @@
-using System.Diagnostics;
-using System.Text;
+using System.Runtime.InteropServices;
 using System.Text.Json;
-using Microsoft.ML.OnnxRuntime;
-using Microsoft.ML.OnnxRuntime.Tensors;
 
-// Headless ASR worker: owns every Moonshine ONNX call so stalls or native aborts
+// Headless ASR worker: owns every native GGUF call so stalls or native aborts
 // never take FlowLocal.App down. Protocol is line-delimited JSON on stdio.
 //
 // In:  {"cmd":"init"} | {"cmd":"start"} | {"cmd":"push","b64":...} | {"cmd":"complete"} | {"cmd":"cancel"} | {"cmd":"exit"}
 // Out: {"evt":"status","state":"Initializing"|"Downloading"|"Loading"|"Ready","detail":...}
 //      {"evt":"ok"} | {"evt":"final","text":...} | {"evt":"error","message":...}
+//
+// Engine: canary-180m-flash Q4_K_M via transcribe.cpp (handy-computer), forced
+// onto the CPU backend. Greedy decoding only; PnC off (Sotto cleans up after);
+// no timestamps, translation, or language detection.
 
-// Constants pinned to the official medium streaming export
-// (moonshine-ai/moonshine-streaming, onnx/medium/streaming_config.json).
 const int SampleRate = 16_000;
-const int ChunkSamples = 1280;   // 80 ms frontend chunk used by the reference implementation
-// Encoder runs in a single final pass, so the streaming left-context/lookahead
-// constants (total_lookahead=16, depth=14) are not needed here.
-const int BosId = 1;
-const int EosId = 2;
-const string ModelDirName = "moonshine-streaming-medium";
-const string ModelRepoUrl = "https://huggingface.co/moonshine-ai/moonshine-streaming/resolve/main/onnx/medium";
-var ModelFiles = new[] { "frontend.onnx", "encoder.onnx", "adapter.onnx", "cross_kv.onnx", "decoder_kv.onnx", "tokenizer.json" };
+const string ModelDirName = "canary-180m-flash-gguf";
+const string ModelFileName = "canary-180m-flash-Q4_K_M.gguf";
+const string ModelRepoUrl = "https://huggingface.co/handy-computer/canary-180m-flash-gguf/resolve/main";
+
+const int BackendCpu = 1;                 // TRANSCRIBE_BACKEND_CPU: exact selection, never falls back
+const int TaskTranscribe = 0;             // TRANSCRIBE_TASK_TRANSCRIBE (not TRANSLATE)
+const int TimestampsNone = 0;             // TRANSCRIBE_TIMESTAMPS_NONE
+const int PncOff = 1;                     // TRANSCRIBE_PNC_MODE_OFF
 
 var jsonOptions = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
 var stdout = Console.Out;
@@ -42,27 +41,50 @@ void Status(string state, string? detail = null)
     Emit(JsonSerializer.Serialize(new StatusEvent("status", state, detail), jsonOptions));
 }
 
-Dictionary<string, InferenceSession>? sessions = null;
-string[]? vocab = null;
+IntPtr model = IntPtr.Zero;
+IntPtr session = IntPtr.Zero;
 List<float>? samples = null;
+
+static string DescribeStatus(int code) => code switch
+{
+    0 => "ok",
+    1 => "invalid argument",
+    2 => "not implemented",
+    3 => "model file not found",
+    4 => "invalid GGUF file",
+    5 => "unsupported architecture",
+    6 => "unsupported model variant",
+    7 => "out of memory",
+    8 => "backend unavailable",
+    9 => "unsupported sample rate",
+    10 => "unsupported language",
+    11 => "unsupported task",
+    12 => "unsupported timestamps",
+    13 => "aborted",
+    _ => $"transcribe error {code}",
+};
 
 async Task EnsureInitializedAsync()
 {
-    if (sessions is not null) return;
+    if (session != IntPtr.Zero) return;
 
     var dir = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "FlowLocal", "Models", ModelDirName);
     Directory.CreateDirectory(dir);
+    // The release build ships ggml backends as modules next to transcribe.dll;
+    // point the library at its own directory once so CPU can be selected.
+    var brc = Native.transcribe_init_backends_default();
+    if (brc != 0) throw new InvalidOperationException($"Native ASR backend registration failed: {DescribeStatus(brc)}.");
+
     Status("Initializing");
 
-    foreach (var file in ModelFiles)
+    var target = Path.Combine(dir, ModelFileName);
+    if (!File.Exists(target))
     {
-        var target = Path.Combine(dir, file);
-        if (File.Exists(target)) continue;
-        Status("Downloading", file);
+        Status("Downloading", ModelFileName);
         var temp = target + ".download";
-        using (var response = await downloadClient.GetAsync($"{ModelRepoUrl}/{file}", HttpCompletionOption.ResponseHeadersRead))
+        using (var response = await downloadClient.GetAsync($"{ModelRepoUrl}/{ModelFileName}", HttpCompletionOption.ResponseHeadersRead))
         {
             response.EnsureSuccessStatusCode();
             await using var source = await response.Content.ReadAsStreamAsync();
@@ -73,40 +95,51 @@ async Task EnsureInitializedAsync()
     }
 
     Status("Loading");
-    sessions = [];
-    foreach (var file in ModelFiles)
+
+    // Exact CPU backend request: the library returns an error instead of
+    // silently falling back to another device when CPU cannot be honored.
+    TranscribeModelLoadParams loadParams = default;
+    Native.transcribe_model_load_params_init(ref loadParams);
+    loadParams.Backend = BackendCpu;
+    var rc = Native.transcribe_model_load_file(target, in loadParams, out model);
+    if (rc != 0) throw new InvalidOperationException($"Canary model failed to load: {DescribeStatus(rc)}.");
+
+    TranscribeSessionParams sessionParams = default;
+    Native.transcribe_session_params_init(ref sessionParams);
+    rc = Native.transcribe_session_init(model, in sessionParams, out session);
+    if (rc != 0)
     {
-        if (!file.EndsWith(".onnx", StringComparison.Ordinal)) continue;
-        // ponytail: one shared CPU SessionOptions; per-device tuning only if profiling demands it.
-        sessions[file] = new InferenceSession(Path.Combine(dir, file), new SessionOptions());
+        Native.transcribe_model_free(model);
+        model = IntPtr.Zero;
+        throw new InvalidOperationException($"Canary session failed to start: {DescribeStatus(rc)}.");
     }
 
-    vocab = LoadVocab(Path.Combine(dir, "tokenizer.json"));
-    Status("Ready", ModelDirName);
+    WarmUp();
+    Status("Ready", $"{Variant()} · {Backend()} · greedy · pnc off");
 }
 
-static string[] LoadVocab(string tokenizerPath)
+/// <summary>One throwaway inference so the first real dictation pays no graph-setup cost.</summary>
+void WarmUp()
 {
-    using var document = JsonDocument.Parse(File.ReadAllText(tokenizerPath));
-    var root = document.RootElement;
-    var vocabElement = root.GetProperty("model").GetProperty("vocab");
-    var result = new string[vocabElement.EnumerateObject().Count()];
-    foreach (var property in vocabElement.EnumerateObject())
-    {
-        var id = property.Value.GetInt32();
-        if (id >= 0 && id < result.Length) result[id] = property.Name;
-    }
-    if (root.TryGetProperty("added_tokens", out var added))
-    {
-        foreach (var token in added.EnumerateArray())
-        {
-            var id = token.GetProperty("id").GetInt32();
-            var content = token.GetProperty("content").GetString();
-            if (content is not null && id >= 0 && id < result.Length) result[id] = content;
-        }
-    }
-    return result;
+    TranscribeRunParams runParams = default;
+    Native.transcribe_run_params_init(ref runParams);
+    ApplyAsrParams(ref runParams);
+    var silence = new float[SampleRate / 2];
+    _ = Native.transcribe_run(session, silence, silence.Length, in runParams);
+    Native.transcribe_reset_timings(session);
 }
+
+static void ApplyAsrParams(ref TranscribeRunParams p)
+{
+    p.Task = TaskTranscribe;
+    p.Timestamps = TimestampsNone;
+    p.Pnc = PncOff;
+    p.Language = Native.LanguageEn;
+    // target_language stays NULL: transcription only, never translation.
+}
+
+string Variant() => Marshal.PtrToStringUTF8(Native.transcribe_model_variant_string(model)) is { Length: > 0 } v ? v : "canary-180m-flash";
+string Backend() => Marshal.PtrToStringUTF8(Native.transcribe_model_backend(model)) is { Length: > 0 } b ? b : "cpu";
 
 async Task StartSessionAsync()
 {
@@ -138,8 +171,15 @@ void CompleteSession()
             return;
         }
 
-        var text = Transcribe(audio).Trim();
-        if (text.Length == 0)
+        TranscribeRunParams runParams = default;
+        Native.transcribe_run_params_init(ref runParams);
+        ApplyAsrParams(ref runParams);
+        var rc = Native.transcribe_run(session, audio, audio.Length, in runParams);
+        if (rc != 0) throw new InvalidOperationException($"Speech recognition failed: {DescribeStatus(rc)}.");
+
+        var text = Marshal.PtrToStringUTF8(Native.transcribe_full_text(session));
+        text = text?.Trim();
+        if (string.IsNullOrEmpty(text))
         {
             Emit("{\"evt\":\"error\",\"message\":\"No speech was recognized.\"}");
         }
@@ -158,150 +198,6 @@ void CancelSession()
 {
     samples = null;
     Emit("{\"evt\":\"ok\"}");
-}
-
-string Transcribe(float[] audio)
-{
-    // Frontend: fixed 1280-sample chunks with carried state; trailing remainder (< 80 ms)
-    // is dropped exactly as in the reference C++ implementation.
-    var features = new List<float>();
-    var featureRows = 0;
-    float[] sampleBuffer = new float[79];
-    long sampleLen = 0;
-    float[] conv1 = new float[4 * 768];
-    float[] conv2 = new float[4 * 1536];
-    long frameCount = 0;
-
-    for (var offset = 0; offset + ChunkSamples <= audio.Length; offset += ChunkSamples)
-    {
-        var chunk = new DenseTensor<float>(new float[ChunkSamples], new[] { 1, ChunkSamples });
-        for (var i = 0; i < ChunkSamples; i++) chunk[0, i] = audio[offset + i];
-        using var results = sessions!["frontend.onnx"].Run([
-            NamedOnnxValue.CreateFromTensor("audio_chunk", chunk),
-            NamedOnnxValue.CreateFromTensor("sample_buffer", new DenseTensor<float>(sampleBuffer, new[] { 1, 79 })),
-            NamedOnnxValue.CreateFromTensor("sample_len", new DenseTensor<long>(new[] { sampleLen }, new[] { 1 })),
-            NamedOnnxValue.CreateFromTensor("conv1_buffer", new DenseTensor<float>(conv1, new[] { 1, 768, 4 })),
-            NamedOnnxValue.CreateFromTensor("conv2_buffer", new DenseTensor<float>(conv2, new[] { 1, 1536, 4 })),
-            NamedOnnxValue.CreateFromTensor("frame_count", new DenseTensor<long>(new[] { frameCount }, new[] { 1 })),
-        ]);
-        var rows = results.First(r => r.Name == "features")!.AsTensor<float>().ToDenseTensor();
-        var rowCount = checked((int)rows.Dimensions[1]);
-        foreach (var value in rows.Buffer.Span) features.Add(value);
-        featureRows += rowCount;
-        sampleBuffer = results.First(r => r.Name == "sample_buffer_out")!.AsTensor<float>().ToArray();
-        sampleLen = results.First(r => r.Name == "sample_len_out")!.AsTensor<long>()[0];
-        conv1 = results.First(r => r.Name == "conv1_buffer_out")!.AsTensor<float>().ToArray();
-        conv2 = results.First(r => r.Name == "conv2_buffer_out")!.AsTensor<float>().ToArray();
-        frameCount = results.First(r => r.Name == "frame_count_out")!.AsTensor<long>()[0];
-    }
-
-    if (featureRows == 0) return string.Empty;
-
-    // Encoder runs once over all stable frames (is_final drops the lookahead window).
-    var featureTensor = new DenseTensor<float>(features.ToArray(), [1, featureRows, 768]);
-    float[] encoded;
-    using (var result = sessions!["encoder.onnx"].Run([NamedOnnxValue.CreateFromTensor("features", featureTensor)]))
-    {
-        encoded = result.First(r => r.Name == "encoded")!.AsTensor<float>().ToArray();
-    }
-
-    float[] memory;
-    using (var result = sessions!["adapter.onnx"].Run([
-        NamedOnnxValue.CreateFromTensor("encoded", new DenseTensor<float>(encoded, [1, featureRows, 768])),
-        NamedOnnxValue.CreateFromTensor("pos_offset", new DenseTensor<long>(new long[] { 0 }, new[] { 1 })),
-    ]))
-    {
-        memory = result.First(r => r.Name == "memory")!.AsTensor<float>().ToArray();
-    }
-
-    var memoryDims = new[] { 1, memory.Length / 640, 640 };
-    float[] kCross, vCross;
-    using (var result = sessions!["cross_kv.onnx"].Run([
-        NamedOnnxValue.CreateFromTensor("memory", new DenseTensor<float>(memory, memoryDims)),
-    ]))
-    {
-        kCross = result.First(r => r.Name == "k_cross")!.AsTensor<float>().ToArray();
-        vCross = result.First(r => r.Name == "v_cross")!.AsTensor<float>().ToArray();
-    }
-
-    var crossLen = memoryDims[1];
-    var crossDims = new[] { 14, 1, 10, crossLen, 64 };
-
-    // Greedy autoregressive decode from BOS through decoder_kv with a growing self cache.
-    var ids = new List<int>();
-    float[]? kSelf = null, vSelf = null;
-    var selfLen = 0;
-    var selfDimsTemplate = new[] { 14, 1, 10, 0, 64 }; // [depth, batch, heads, cache_len, head_dim]
-    var maxTokens = Math.Clamp((int)Math.Ceiling(audio.Length / (double)SampleRate * 6.5), 1, 256);
-    var next = BosId;
-    while (ids.Count < maxTokens)
-    {
-        var token = new DenseTensor<long>(new long[] { next }, new[] { 1, 1 });
-        using var result = sessions!["decoder_kv.onnx"].Run([
-            NamedOnnxValue.CreateFromTensor("token", token),
-            NamedOnnxValue.CreateFromTensor("k_self", new DenseTensor<float>(kSelf ?? [], WithCacheLen(selfDimsTemplate, selfLen))),
-            NamedOnnxValue.CreateFromTensor("v_self", new DenseTensor<float>(vSelf ?? [], WithCacheLen(selfDimsTemplate, selfLen))),
-            NamedOnnxValue.CreateFromTensor("out_k_cross", new DenseTensor<float>(kCross, crossDims)),
-            NamedOnnxValue.CreateFromTensor("out_v_cross", new DenseTensor<float>(vCross, crossDims)),
-        ]);
-        var logits = result.First(r => r.Name == "logits")!.AsTensor<float>().ToDenseTensor();
-        next = Argmax(logits.Buffer.Span[^32768..]);
-        if (next == EosId) break;
-        ids.Add(next);
-        kSelf = result.First(r => r.Name == "out_k_self")!.AsTensor<float>().ToArray();
-        vSelf = result.First(r => r.Name == "out_v_self")!.AsTensor<float>().ToArray();
-        selfLen++;
-    }
-
-    return Detokenize(ids, vocab!);
-}
-
-static int[] WithCacheLen(int[] dims, int cacheLen)
-{
-    var copy = (int[])dims.Clone();
-    copy[3] = cacheLen;
-    return copy;
-}
-
-static int Argmax(ReadOnlySpan<float> values)
-{
-    var best = 0;
-    for (var i = 1; i < values.Length; i++)
-    {
-        if (values[i] > values[best]) best = i;
-    }
-    return best;
-}
-
-static string Detokenize(List<int> ids, string[] vocab)
-{
-    var pendingBytes = new List<byte>();
-    var text = new StringBuilder();
-    void FlushBytes()
-    {
-        if (pendingBytes.Count == 0) return;
-        text.Append(Encoding.UTF8.GetString(pendingBytes.ToArray()));
-        pendingBytes.Clear();
-    }
-
-    foreach (var id in ids)
-    {
-        if (id <= 0 || id >= vocab.Length || vocab[id] is not { } token) continue;
-        // Byte-fallback tokens "<0xHH>" carry raw bytes; other "<...>" tokens are special.
-        if (token.Length >= 3 && token[0] == '<' && token[^1] == '>')
-        {
-            if (token.Length == 6 && token[1] == '0' && token[2] == 'x'
-                && Uri.IsHexDigit(token[3]) && Uri.IsHexDigit(token[4]))
-            {
-                pendingBytes.Add(Convert.ToByte(token[3..5].ToString(), 16));
-            }
-            continue;
-        }
-        FlushBytes();
-        text.Append(token.Replace('\u2581', ' '));
-    }
-    FlushBytes();
-    return text.ToString().Trim();
 }
 
 Status("Starting");
@@ -344,6 +240,89 @@ while (await Console.In.ReadLineAsync() is { } line)
             if (command is "push" or "start") { samples = null; }
         }
     }
+}
+
+internal static partial class Native
+{
+    private const string Lib = "transcribe";
+    private const CallingConvention Cdecl = System.Runtime.InteropServices.CallingConvention.Cdecl;
+
+    internal static readonly IntPtr LanguageEn = Marshal.StringToCoTaskMemUTF8("en");
+
+    /// <summary>Dynamic-backend builds must register their module directory once, before the first model load.</summary>
+    [DllImport(Lib, CallingConvention = Cdecl)]
+    internal static extern int transcribe_init_backends_default();
+
+    [DllImport(Lib, CallingConvention = Cdecl)]
+    internal static extern void transcribe_model_load_params_init(ref TranscribeModelLoadParams params_);
+
+    [DllImport(Lib, CallingConvention = Cdecl)]
+    internal static extern void transcribe_session_params_init(ref TranscribeSessionParams params_);
+
+    [DllImport(Lib, CallingConvention = Cdecl)]
+    internal static extern void transcribe_run_params_init(ref TranscribeRunParams params_);
+
+    [DllImport(Lib, CallingConvention = Cdecl)]
+    internal static extern int transcribe_model_load_file(
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string path,
+        in TranscribeModelLoadParams params_,
+        out IntPtr outModel);
+
+    [DllImport(Lib, CallingConvention = Cdecl)]
+    internal static extern void transcribe_model_free(IntPtr model);
+
+    [DllImport(Lib, CallingConvention = Cdecl)]
+    internal static extern int transcribe_session_init(IntPtr model, in TranscribeSessionParams params_, out IntPtr outSession);
+
+    [DllImport(Lib, CallingConvention = Cdecl)]
+    internal static extern int transcribe_run(IntPtr session, float[] pcm, int nSamples, in TranscribeRunParams params_);
+
+    [DllImport(Lib, CallingConvention = Cdecl)]
+    internal static extern IntPtr transcribe_full_text(IntPtr session);
+
+    [DllImport(Lib, CallingConvention = Cdecl)]
+    internal static extern IntPtr transcribe_model_variant_string(IntPtr model);
+
+    [DllImport(Lib, CallingConvention = Cdecl)]
+    internal static extern IntPtr transcribe_model_backend(IntPtr model);
+
+    [DllImport(Lib, CallingConvention = Cdecl)]
+    internal static extern void transcribe_reset_timings(IntPtr session);
+}
+
+// Layouts mirror include/transcribe/transcribe.h on x64. struct_size and the
+// remaining defaults are filled by the *_init functions, not by us.
+[StructLayout(LayoutKind.Explicit)]
+internal struct TranscribeModelLoadParams
+{
+    [FieldOffset(0)] public ulong StructSize;
+    [FieldOffset(8)] public int Backend;
+    [FieldOffset(16)] public IntPtr Device;
+}
+
+[StructLayout(LayoutKind.Explicit)]
+internal struct TranscribeSessionParams
+{
+    [FieldOffset(0)] public ulong StructSize;
+    [FieldOffset(8)] public int NThreads;
+    [FieldOffset(12)] public int KvType;
+    [FieldOffset(16)] public int NCtx;
+}
+
+[StructLayout(LayoutKind.Explicit)]
+internal struct TranscribeRunParams
+{
+    [FieldOffset(0)] public ulong StructSize;
+    [FieldOffset(8)] public int Task;
+    [FieldOffset(12)] public int Timestamps;
+    [FieldOffset(16)] public int Pnc;
+    [FieldOffset(20)] public int Itn;
+    [FieldOffset(24)] public int Diarize;
+    [FieldOffset(32)] public IntPtr Language;
+    [FieldOffset(40)] public IntPtr TargetLanguage;
+    [FieldOffset(48)][MarshalAs(UnmanagedType.U1)] public bool KeepSpecialTags;
+    [FieldOffset(56)] public IntPtr Family;
+    [FieldOffset(64)] public int SpecKDrafts;
 }
 
 internal sealed record StatusEvent(string Evt, string State, string? Detail);

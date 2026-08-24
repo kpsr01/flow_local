@@ -16,7 +16,7 @@ public partial class App : Application
     private GlobalShortcutService? _shortcut;
     private WasapiAudioCaptureService? _audio;
     private DictationController? _dictation;
-    private MoonshineAsrService? _asr;
+    private CanaryAsrService? _asr;
     private SottoTranscriptCleaner? _cleaner;
     private SqliteHistoryRepository? _history;
     private AppSettingsStore? _appSettings;
@@ -66,7 +66,7 @@ public partial class App : Application
         _audio = new WasapiAudioCaptureService();
         _audio.LevelChanged += OnAudioLevelChanged;
         _audio.FellBackToDefaultDevice += OnMicrophoneFallback;
-        _asr = new MoonshineAsrService();
+        _asr = new CanaryAsrService();
         _cleaner = new SottoTranscriptCleaner();
         _history = new SqliteHistoryRepository();
         _appSettings = new AppSettingsStore();
@@ -79,7 +79,7 @@ public partial class App : Application
             new RecordingStateMachine(), targets, contextDetector, styleClassifier, styleOverrides,
             _audio, _asr, _cleaner, _cleaner, insertion, _overlayWindow,
             NullLogger<DictationController>.Instance, _history,
-            asrModelName: MoonshineAsrService.ModelName);
+            asrModelName: CanaryAsrService.ModelName);
         var historyActions = new HistoryActionService(_history, _asr, _cleaner, targets, insertion);
         _historyActions = historyActions;
         ApplicationContext? diagnosticContext = null;

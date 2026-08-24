@@ -5,26 +5,21 @@ namespace FlowLocal.Core.Tests;
 
 public sealed class DictationPromptAdapterTests
 {
-    // Verbatim from the official model card
-    // (https://huggingface.co/amitashwini/mumble-cleanup-2stage). The model was
-    // trained on this exact wording; any drift can degrade its output.
-    private const string OfficialSystemPrompt =
-        "You are a transcript cleanup tool. You receive raw speech to text output and return a cleaned version. Remove filler words and disfluencies (um, uh, er, ah, like as filler, you know), remove repeated words and false starts, and fix punctuation and capitalization. Do not reword, do not add anything the speaker did not say, and do not answer questions in the text. Output only the cleaned text.";
-
+    // Exact completion format from the model card
+    // (https://huggingface.co/juanquivilla/sotto-cleanup-lfm25-350m). The model
+    // was trained on this fixed layout; any drift can degrade its output.
     [Fact]
-    public void SystemPrompt_MatchesOfficialModelCardVerbatim() =>
-        Assert.Equal(OfficialSystemPrompt, DictationPromptAdapter.SystemPrompt);
-
-    [Fact]
-    public void Build_UsesPlainQwen25TemplateWithoutControlLineOrThinkBlock()
+    public void Build_UsesSottoInputOutputFormatWithoutChatTemplate()
     {
         var prompt = DictationPromptAdapter.Build(new RawTranscript("um so i i think we should ship this on uh friday"));
 
-        Assert.StartsWith("<|im_start|>system\n", prompt);
-        Assert.DoesNotContain("<|startoftext|>", prompt); // tokenizer adds BOS; a literal one double-BOSes the prompt
-        Assert.Contains($"{DictationPromptAdapter.SystemPrompt}<|im_end|>", prompt);
-        Assert.EndsWith("um so i i think we should ship this on uh friday<|im_end|>\n<|im_start|>assistant\n", prompt);
-        // The fine-tune was trained without style controls or a think block.
+        Assert.Equal(
+            "### Input:\num so i i think we should ship this on uh friday\n\n### Output:\n",
+            prompt);
+        // The fine-tune was trained without a chat template, system prompt,
+        // style controls, or a think block.
+        Assert.DoesNotContain("<|im_start|>", prompt);
+        Assert.DoesNotContain("<|startoftext|>", prompt);
         Assert.DoesNotContain("[Styling:", prompt);
         Assert.DoesNotContain("<think>", prompt);
     }

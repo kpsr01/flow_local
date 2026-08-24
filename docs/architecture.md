@@ -20,7 +20,7 @@ flowchart LR
   X --> S[Classify output style]
   C --> A[WASAPI capture]
   A --> W[PCM WAV recovery file]
-  A --> N[Moonshine ONNX worker stream]
+  A --> N[Canary GGUF worker stream]
   N --> R[Raw transcript]
   R --> L[Local Sotto cleanup]
   S --> L
@@ -38,7 +38,7 @@ Before insertion, `ActiveTargetTracker` restores and validates the captured targ
 
 ## Local model boundaries
 
-`MoonshineAsrService` is a thin stdio client for the headless `FlowLocal.AsrWorker.exe` process, which runs [Moonshine streaming-medium](https://huggingface.co/moonshine-ai/moonshine-streaming-medium) through Microsoft.ML.OnnxRuntime (CPU). Audio accumulates as 16 kHz mono float PCM during a session; at release the worker runs the frontend/encoder/adapter graphs over the full buffer and greedy-decodes with `decoder_kv.onnx`, so results are final-on-release. Missing model files are downloaded from Hugging Face at first init into `%LOCALAPPDATA%\FlowLocal\Models\moonshine-streaming-medium`.
+`CanaryAsrService` is a thin stdio client for the headless `FlowLocal.AsrWorker.exe` process, which runs [Canary 180M Flash](https://huggingface.co/handy-computer/canary-180m-flash-gguf) (Q4_K_M GGUF) through [transcribe.cpp](https://github.com/handy-computer/transcribe.cpp) on the CPU backend. Audio accumulates as 16 kHz mono float PCM during a session; at release the worker runs one `transcribe_run` call over the full buffer, so results are final-on-release. Decoding is greedy with punctuation/capitalization off (Sotto restores formatting), and timestamps, translation, and language detection are disabled. The model and session stay loaded between dictations; a half-second warm-up inference at init removes first-use graph setup from the first transcript. Missing model files are downloaded from Hugging Face at first init into `%LOCALAPPDATA%\FlowLocal\Models\canary-180m-flash-gguf`.
 
 `SottoTranscriptCleaner` uses LLamaSharp to run [sotto-cleanup-lfm25-350m](https://huggingface.co/juanquivilla/sotto-cleanup-lfm25-350m) (`sotto-cleanup-lfm25-350m-q4_k_m.gguf`, Q4_K_M — a full fine-tune of LiquidAI/LFM2.5-350M-Base published by `juanquivilla`; the GGUF is converted from the BF16 checkpoint with llama.cpp's `convert_hf_to_gguf.py`). It reads the model from `FLOWLOCAL_CLEANUP_MODEL_PATH`, falling back to the `.gguf` in `%LOCALAPPDATA%\FlowLocal\Models` (preferring a `sotto-cleanup` file). Prompts use the model card's exact completion format — `### Input:` / `### Output:`, no chat template and no system prompt, since the base-model fine-tune was trained on that single fixed layout; decoding is greedy at temperature 0 with the card's `repetition_penalty=1.05` (penalty window covering the whole output, matching the HF reference) and `max_new_tokens = max(900, 1.5 x input_words)`, stopping at the next `###` marker like the card's example, on an 8192-token context and CPU inference by default (Q4_K_M benchmarked ~2.6x faster prompt processing than Q5_K_M at equivalent quality); setting `FLOWLOCAL_CLEANUP_GPU=1` requests full GPU offload with automatic fallback to CPU. The model stays loaded between requests. It neither downloads the GGUF nor searches beyond that directory.
 

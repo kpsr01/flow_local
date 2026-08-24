@@ -7,9 +7,9 @@ public sealed class AsrBackendContractTests
     [Fact]
     public void Backend_ExposesInitialStatusWithoutInitializingModel()
     {
-        using var service = new MoonshineAsrService();
+        using var service = new CanaryAsrService();
 
-        Assert.Equal("moonshine-streaming-medium", MoonshineAsrService.ModelName);
+        Assert.Equal("canary-180m-flash-q4_k_m", CanaryAsrService.ModelName);
         Assert.Equal(AsrBackendState.NotInstalled, service.Status.State);
         Assert.Null(service.Status.ModelId);
         Assert.Null(service.Status.Provider);
@@ -32,11 +32,11 @@ public sealed class AsrBackendContractTests
     {
         var status = new AsrBackendStatus(
             AsrBackendState.Ready,
-            "moonshine-streaming-medium",
+            "canary-180m-flash-q4_k_m",
             "CPU");
 
         Assert.Equal(AsrBackendState.Ready, status.State);
-        Assert.Equal("moonshine-streaming-medium", status.ModelId);
+        Assert.Equal("canary-180m-flash-q4_k_m", status.ModelId);
         Assert.Equal("CPU", status.Provider);
         Assert.Null(status.FailureMessage);
     }

@@ -6,13 +6,14 @@ using FlowLocal.Core;
 namespace FlowLocal.App;
 
 /// <summary>
-/// Thin client for the FlowLocal.AsrWorker companion process. All Moonshine ONNX
-/// inference runs inside the worker so stalls or native aborts never take the app down;
-/// a wedged or crashed worker is killed and transparently respawned for the next session.
+/// Thin client for the FlowLocal.AsrWorker companion process. All Canary GGUF
+/// inference (transcribe.cpp, CPU) runs inside the worker so stalls or native
+/// aborts never take the app down; a wedged or crashed worker is killed and
+/// transparently respawned for the next session.
 /// </summary>
-public sealed class MoonshineAsrService : IAsrService, IDisposable, IAsyncDisposable
+public sealed class CanaryAsrService : IAsrService, IDisposable, IAsyncDisposable
 {
-    public const string ModelName = "moonshine-streaming-medium";
+    public const string ModelName = "canary-180m-flash-q4_k_m";
 
     private static readonly TimeSpan InitTimeout = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan StartAckTimeout = TimeSpan.FromSeconds(45);
@@ -50,7 +51,7 @@ public sealed class MoonshineAsrService : IAsrService, IDisposable, IAsyncDispos
         ArgumentNullException.ThrowIfNull(options);
         if (options.SampleRate != 16_000 || options.BitsPerSample != 16 || options.Channels != 1)
         {
-            throw new ArgumentException("Moonshine ASR requires 16000 Hz, 16-bit, mono PCM audio.", nameof(options));
+            throw new ArgumentException("Canary ASR requires 16000 Hz, 16-bit, mono PCM audio.", nameof(options));
         }
 
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -170,7 +171,7 @@ public sealed class MoonshineAsrService : IAsrService, IDisposable, IAsyncDispos
             return;
         }
 
-        // First-run model download/ONNX session warm-up inside the worker can occasionally
+        // First-run model download/GGUF warm-up inside the worker can occasionally
         // stall; a fresh process retries instead of hanging forever.
         for (var attempt = 1; ; attempt++)
         {

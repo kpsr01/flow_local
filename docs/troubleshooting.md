@@ -2,14 +2,14 @@
 
 ## Initialization overlay reports a failure
 
-FlowLocal enables dictation only after history, the Moonshine speech model, and the cleanup model initialize. Read the full overlay message, correct the named prerequisite, then exit from the tray menu and restart; the current UI has no general initialization retry command.
+FlowLocal enables dictation only after history, the Canary speech model, and the cleanup model initialize. Read the full overlay message, correct the named prerequisite, then exit from the tray menu and restart; the current UI has no general initialization retry command.
 
 ### Speech model is missing or not ready
 
-- Confirm the machine is online for the first model download, or that `%LOCALAPPDATA%\FlowLocal\Models\moonshine-streaming-medium` contains `frontend.onnx`, `encoder.onnx`, `adapter.onnx`, `cross_kv.onnx`, `decoder_kv.onnx`, and `tokenizer.json`.
-- If a download was interrupted, delete the `.download` partial files (or the whole folder) and restart FlowLocal so the worker fetches them again.
+- Confirm the machine is online for the first model download, or that `%LOCALAPPDATA%\FlowLocal\Models\canary-180m-flash-gguf` contains `canary-180m-flash-Q4_K_M.gguf`.
+- If a download was interrupted, delete the `.download` partial file (or the whole folder) and restart FlowLocal so the worker fetches it again.
 - Ensure the Windows account can write to `%LOCALAPPDATA%\FlowLocal\Models`. FlowLocal owns that directory.
-- First initialization loads five ONNX sessions and can take a few minutes on some machines. Do not substitute `FakeAsrService`; it is not wired into production startup.
+- First initialization loads the GGUF and runs a warm-up inference and can take a few seconds on some machines. Do not substitute `FakeAsrService`; it is not wired into production startup.
 
 ### “Set FLOWLOCAL_CLEANUP_MODEL_PATH…” or cleanup model not found
 
@@ -28,7 +28,7 @@ The file may be incomplete or incompatible with LLamaSharp/llama.cpp, or too lar
 
 ### Speech recognition fails or the app previously crashed while transcribing
 
-All Moonshine model code runs in the separate `FlowLocal.AsrWorker.exe` process. If recognition stalls, the worker is terminated and respawned automatically, and the dictation fails with a typed error while keeping the saved recording for retry. If every session still reports `AsrFailed`, confirm the six model files above exist and verify a microphone is capturing (Settings > Microphone).
+All Canary model code runs in the separate `FlowLocal.AsrWorker.exe` process. If recognition stalls, the worker is terminated and respawned automatically, and the dictation fails with a typed error while keeping the saved recording for retry. If every session still reports `AsrFailed`, confirm the GGUF above exists (the Settings page shows the backend state as `Ready — canary-180m-flash · CPU · greedy · pnc off` when it loaded) and verify a microphone is capturing (Settings > Microphone).
 
 ## Microphone problems
 

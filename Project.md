@@ -98,8 +98,10 @@ Audio capture must not block the UI thread.
 Use:
 
 ```text
-Model: moonshine-streaming-medium (moonshine-ai/moonshine-streaming ONNX export, onnx/medium)
-Runtime: Microsoft.ML.OnnxRuntime (CPU) inside FlowLocal.AsrWorker.exe
+Model: canary-180m-flash (handy-computer/canary-180m-flash-gguf, Q4_K_M GGUF)
+Runtime: transcribe.cpp 0.2.1 native library (CPU backend) inside FlowLocal.AsrWorker.exe
+Decoding: greedy; punctuation/capitalization off (Sotto restores formatting);
+          timestamps, translation, and language detection disabled
 Language: English
 Execution: local CPU only
 ```
@@ -117,7 +119,7 @@ public interface IAsrService
 }
 ```
 
-Moonshine can generate partial results internally, but the default user experience must be final-on-release. Partial results should not be inserted into the target application.
+Canary is an offline encoder-decoder model and produces final results per run; the default user experience is final-on-release. Partial results are not inserted into the target application.
 ### Transcript Cleanup Model
 
 Use:
@@ -1353,7 +1355,7 @@ Implement the following pipeline.
 8. Create a recoverable session record.
 9. Open the temporary audio file.
 10. Start microphone capture.
-11. Start the Moonshine ASR session.
+11. Start the Canary ASR session.
 ```
 
 ## During Recording
@@ -1911,7 +1913,7 @@ Implement:
 
 ```text
 ✅ Worker readiness detection
-✅ Moonshine initialization
+✅ Canary initialization
 ✅ Streaming audio input
 ✅ Final result
 ✅ Retry from saved audio
@@ -2029,7 +2031,7 @@ The release is complete only when a user can perform this scenario:
 1. Install and launch the app on Windows 11.
 
 2. Select or confirm a microphone.
-3. Install or locate the local Moonshine and cleanup models.
+3. Install or locate the local Canary and cleanup models.
 4. Focus a Gmail compose field in Chrome.
 
 5. Hold the push-to-talk shortcut.

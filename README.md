@@ -7,12 +7,12 @@ FlowLocal is a Windows 11 x64 WPF dictation application. Hold the global shortcu
 - Windows 11 x64. The projects target `net9.0-windows10.0.26100.0`; Windows 10 is not a supported target.
 - .NET 9 SDK to build or run from source. A self-contained packaged build does not require a separately installed .NET runtime.
 - A working Windows recording device and microphone permission for desktop applications.
-- Disk space and memory for the app, the Moonshine streaming-medium ONNX models (~296 MB in `%LOCALAPPDATA%\FlowLocal\Models\moonshine-streaming-medium`), and the Sotto cleanup GGUF (~229 MB).
+- Disk space and memory for the app, the Canary 180M Flash GGUF (~133 MB in `%LOCALAPPDATA%\FlowLocal\Models\canary-180m-flash-gguf`), and the Sotto cleanup GGUF (~229 MB).
 - Internet access for initial NuGet restore and the first speech-model download. Dictation inference is local after those assets are installed.
 
 ## Speech model
 
-ASR runs [Moonshine streaming-medium](https://huggingface.co/moonshine-ai/moonshine-streaming-medium) through ONNX Runtime (CPU) inside the `FlowLocal.AsrWorker.exe` companion process. The worker loads `frontend.onnx`, `encoder.onnx`, `adapter.onnx`, `cross_kv.onnx`, and `decoder_kv.onnx` plus `tokenizer.json` from `%LOCALAPPDATA%\FlowLocal\Models\moonshine-streaming-medium`. The installer downloads these files; when running from source, the worker downloads any missing file from Hugging Face at first init, so the first launch may need network access.
+ASR runs [Canary 180M Flash](https://huggingface.co/handy-computer/canary-180m-flash-gguf) (Q4_K_M GGUF) through [transcribe.cpp](https://github.com/handy-computer/transcribe.cpp) (CPU backend) inside the `FlowLocal.AsrWorker.exe` companion process. The worker loads `canary-180m-flash-Q4_K_M.gguf` from `%LOCALAPPDATA%\FlowLocal\Models\canary-180m-flash-gguf`, keeps the model warm between dictations, and decodes greedily with punctuation/capitalization, timestamps, and translation disabled — raw lowercase text is passed to Sotto for cleanup. The installer downloads the file; when running from source, the worker downloads it from Hugging Face at first init, so the first launch may need network access.
 
 ## Cleanup model installation
 
@@ -67,9 +67,9 @@ FlowLocal starts in the notification area. Right-click its tray icon for **Setti
 
 ## First-run setup
 
-1. Install FlowLocal normally (the installer places the Moonshine ONNX files and the cleanup GGUF), or run once from source with network access so the worker can fetch the speech model into `%LOCALAPPDATA%\FlowLocal\Models\moonshine-streaming-medium`, and place `sotto-cleanup-lfm25-350m-q4_k_m.gguf` in `%LOCALAPPDATA%\FlowLocal\Models` or set `FLOWLOCAL_CLEANUP_MODEL_PATH` as shown above.
+1. Install FlowLocal normally (the installer places the Canary speech model and the cleanup GGUF), or run once from source with network access so the worker can fetch the speech model into `%LOCALAPPDATA%\FlowLocal\Models\canary-180m-flash-gguf`, and place `sotto-cleanup-lfm25-350m-q4_k_m.gguf` in `%LOCALAPPDATA%\FlowLocal\Models` or set `FLOWLOCAL_CLEANUP_MODEL_PATH` as shown above.
 2. In Windows, select and test the intended default input device and allow desktop-app microphone access.
-3. Start FlowLocal and wait for the initialization overlay to disappear. The worker may download and warm up the Moonshine model on this first run; the cleanup model is then loaded from its discovered or configured file.
+3. Start FlowLocal and wait for the initialization overlay to disappear. The worker may download and warm up the Canary model on this first run; the cleanup model is then loaded from its discovered or configured file.
 4. Open **Settings**, review Application styles and History/privacy defaults, then use **Test current target** while the intended target is active.
 5. Focus a writable text field, hold Ctrl+Windows while speaking, and release either key to transcribe, clean, and insert. Press Escape while held to cancel.
 
@@ -113,7 +113,7 @@ All mutable data is under `%LOCALAPPDATA%\FlowLocal`:
 | --- | --- |
 | `%LOCALAPPDATA%\FlowLocal\flowlocal.db` | SQLite history, transcript, target/style metadata, timings, errors, and retention settings |
 | `%LOCALAPPDATA%\FlowLocal\Models\*.gguf` | Cleanup model files (downloaded here by the installer) |
-| `%LOCALAPPDATA%\FlowLocal\Models\moonshine-streaming-medium\` | Moonshine ONNX graphs and tokenizer (downloaded here by the installer or the worker) |
+| `%LOCALAPPDATA%\FlowLocal\Models\canary-180m-flash-gguf\` | Canary 180M Flash Q4_K_M GGUF (downloaded here by the installer or the worker) |
 | `%LOCALAPPDATA%\FlowLocal\Recordings\<session-id>.wav` | Recoverable/session audio and retained recordings |
 | `%LOCALAPPDATA%\FlowLocal\application-styles.json` | Application/domain classification overrides and classification switches |
 

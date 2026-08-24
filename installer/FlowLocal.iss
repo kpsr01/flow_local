@@ -30,7 +30,7 @@ WizardStyle=modern
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Messages]
-WelcomeLabel2=This will install [name/ver], a private, local dictation assistant.%n%nEverything runs on this PC: speech recognition and text cleanup never touch the cloud.%n%nThe installer also downloads the speech-recognition and text-cleanup models (roughly 550 MB total). An internet connection is required once.
+WelcomeLabel2=This will install [name/ver], a private, local dictation assistant.%n%nEverything runs on this PC: speech recognition and text cleanup never touch the cloud.%n%nThe installer also downloads the speech-recognition and text-cleanup models (roughly 370 MB total). An internet connection is required once.
 SelectDirDesc=Where should FlowLocal be installed?
 FinishedLabelNoIcons=[name] has been installed. The dictation capsule is running in your system tray - hold Ctrl+Win anywhere and speak.
 FinishedLabel=[name] has been installed. The dictation capsule is running in your system tray - hold Ctrl+Win anywhere and speak.
@@ -44,33 +44,19 @@ Name: "desktopicon"; Description: "Create a &desktop shortcut"; \
 [Files]
 ; App payload
 Source: "..\artifacts\publish\win-x64\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
-; Moonshine streaming-medium ONNX graphs + tokenizer (MIT license)
-Source: "https://huggingface.co/moonshine-ai/moonshine-streaming/resolve/main/onnx/medium/frontend.onnx"; \
-    DestDir: "{localappdata}\FlowLocal\Models\moonshine-streaming-medium"; DestName: "frontend.onnx"; ExternalSize: 47458770; \
-    Flags: external download ignoreversion; Check: Not MoonshineModelPresent()
-Source: "https://huggingface.co/moonshine-ai/moonshine-streaming/resolve/main/onnx/medium/encoder.onnx"; \
-    DestDir: "{localappdata}\FlowLocal\Models\moonshine-streaming-medium"; DestName: "encoder.onnx"; ExternalSize: 94664836; \
-    Flags: external download ignoreversion; Check: Not MoonshineModelPresent()
-Source: "https://huggingface.co/moonshine-ai/moonshine-streaming/resolve/main/onnx/medium/adapter.onnx"; \
-    DestDir: "{localappdata}\FlowLocal\Models\moonshine-streaming-medium"; DestName: "adapter.onnx"; ExternalSize: 14560169; \
-    Flags: external download ignoreversion; Check: Not MoonshineModelPresent()
-Source: "https://huggingface.co/moonshine-ai/moonshine-streaming/resolve/main/onnx/medium/cross_kv.onnx"; \
-    DestDir: "{localappdata}\FlowLocal\Models\moonshine-streaming-medium"; DestName: "cross_kv.onnx"; ExternalSize: 11595723; \
-    Flags: external download ignoreversion; Check: Not MoonshineModelPresent()
-Source: "https://huggingface.co/moonshine-ai/moonshine-streaming/resolve/main/onnx/medium/decoder_kv.onnx"; \
-    DestDir: "{localappdata}\FlowLocal\Models\moonshine-streaming-medium"; DestName: "decoder_kv.onnx"; ExternalSize: 125780753; \
-    Flags: external download ignoreversion; Check: Not MoonshineModelPresent()
-Source: "https://huggingface.co/moonshine-ai/moonshine-streaming/resolve/main/onnx/medium/tokenizer.json"; \
-    DestDir: "{localappdata}\FlowLocal\Models\moonshine-streaming-medium"; DestName: "tokenizer.json"; ExternalSize: 1985533; \
-    Flags: external download ignoreversion; Check: Not MoonshineModelPresent()
+; Canary 180M Flash ASR GGUF, Q4_K_M quant (CC-BY-4.0, transcribe.cpp port)
+Source: "https://huggingface.co/handy-computer/canary-180m-flash-gguf/resolve/main/canary-180m-flash-Q4_K_M.gguf"; \
+    DestDir: "{localappdata}\FlowLocal\Models\canary-180m-flash-gguf"; DestName: "canary-180m-flash-Q4_K_M.gguf"; ExternalSize: 139223744; \
+    Flags: external download ignoreversion; Check: Not CanaryModelPresent()
 Source: "https://huggingface.co/baddu/sotto-cleanup-lfm25-350m-GGUF/resolve/main/sotto-cleanup-lfm25-350m-q4_k_m.gguf"; \
     DestDir: "{localappdata}\FlowLocal\Models"; DestName: "sotto-cleanup-lfm25-350m-q4_k_m.gguf"; ExternalSize: 229311200; \
     Flags: external download ignoreversion; Check: Not GgufSkipDownload()
 
 [InstallDelete]
-; Remove retired cleanup models from upgraded installs (S1-mini and Mumble).
+; Remove retired speech and cleanup models from upgraded installs.
 Type: files; Name: "{localappdata}\FlowLocal\Models\s1-mini-q4_k_m.gguf"
 Type: files; Name: "{localappdata}\FlowLocal\Models\mumble-cleanup-2stage-q4_0.gguf"
+Type: filesandordirs; Name: "{localappdata}\FlowLocal\Models\moonshine-streaming-medium"
 
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExeName}"
@@ -84,18 +70,12 @@ Filename: "{app}\{#AppExeName}"; Description: "Launch {#AppName} now"; \
 
 [Code]
 const
-  MoonshineModelDir = '{localappdata}\FlowLocal\Models\moonshine-streaming-medium';
+  CanaryModelDir = '{localappdata}\FlowLocal\Models\canary-180m-flash-gguf';
   GgufTarget = '{localappdata}\FlowLocal\Models\sotto-cleanup-lfm25-350m-q4_k_m.gguf';
 
-function MoonshineModelPresent(): Boolean;
+function CanaryModelPresent(): Boolean;
 begin
-  Result :=
-    FileExists(ExpandConstant(MoonshineModelDir + '\frontend.onnx')) and
-    FileExists(ExpandConstant(MoonshineModelDir + '\encoder.onnx')) and
-    FileExists(ExpandConstant(MoonshineModelDir + '\adapter.onnx')) and
-    FileExists(ExpandConstant(MoonshineModelDir + '\cross_kv.onnx')) and
-    FileExists(ExpandConstant(MoonshineModelDir + '\decoder_kv.onnx')) and
-    FileExists(ExpandConstant(MoonshineModelDir + '\tokenizer.json'));
+  Result := FileExists(ExpandConstant(CanaryModelDir + '\canary-180m-flash-Q4_K_M.gguf'));
 end;
 
 function GgufSkipDownload(): Boolean;

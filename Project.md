@@ -18,7 +18,7 @@ User focuses a text field
 → speaks naturally, including fillers and self-corrections
 → releases the shortcut
 → local ASR produces the raw transcript
-→ S1-mini cleans and formats the transcript
+→ the Mumble cleanup model cleans the transcript
 → the app detects the active application or website
 → the app selects an appropriate output style
 → the cleaned text is inserted into the original text field
@@ -123,9 +123,10 @@ Moonshine can generate partial results internally, but the default user experien
 Use:
 
 ```text
-Model: superwhisper/s1-mini-GGUF
+Model: trevornk/mumble-cleanup-2stage-GGUF (upstream: amitashwini/mumble-cleanup-2stage,
+       a LoRA fine-tune of Qwen/Qwen2.5-0.5B-Instruct)
 Format: GGUF
-Quantization: Q4_K_M (installer default; the build the published accuracy was measured on)
+Quantization: Q4_0 (repo recommendation for CPU/on-device latency)
 Runtime: llama.cpp
 C# integration: LLamaSharp or a small managed wrapper around llama.cpp
 Execution: completely local
@@ -136,11 +137,9 @@ Inference configuration:
 ```text
 Temperature: 0
 Sampling: greedy or deterministic
-Thinking/reasoning mode: disabled
-enable_thinking: false
-```
+Chat template: plain Qwen2.5 template — no control line, no think block
 
-Use S1-mini's official system prompt and trained control-line format (Qwen3 chat template with `enable_thinking: false`, i.e. the assistant turn opens with an empty think block) implemented in `DictationPromptAdapter`; do not add extra instructions or invent control values outside the trained sets — the model was trained on that fixed format.
+Use mumble-cleanup-2stage's official system prompt verbatim over the plain Qwen2.5 chat template, implemented in `DictationPromptAdapter`; do not add extra instructions, control lines, or a think block — the model was trained on that single fixed format.
 
 Create a dedicated abstraction:
 
@@ -154,7 +153,7 @@ public interface ITranscriptCleaner
 }
 ```
 
-S1-mini is used only for faithful transcript cleanup and formatting. It must not be asked to perform general rewriting, summarization, or open-ended instruction following.
+mumble-cleanup-2stage is used only for faithful transcript cleanup. It must not be asked to perform general rewriting, summarization, or open-ended instruction following.
 
 ### Text Insertion
 
@@ -379,7 +378,7 @@ While recording:
 After release:
 
 1. Finalize the complete ASR transcript.
-2. Send the complete transcript to S1-mini.
+2. Send the complete transcript to the cleanup model.
 3. Insert only the final cleaned result.
 
 This behavior is important because corrections near the end of an utterance can change earlier words.
@@ -641,7 +640,7 @@ History interface requirements:
 - Copy raw text.
 - Paste the cleaned transcript again.
 - Retry ASR from the saved recording.
-- Re-run S1-mini cleanup without rerunning ASR.
+- Re-run cleanup without rerunning ASR.
 - Play the recording.
 - Export the recording.
 - Delete one entry.
@@ -733,7 +732,7 @@ Use typed errors rather than parsing exception strings in the UI.
 
 # 7. P0 Transcript Intelligence
 
-The S1-mini cleanup stage must implement all behavior in this section.
+The cleanup stage must implement all behavior in this section.
 
 ## P0.11 Filler-Word Removal
 
@@ -1310,11 +1309,12 @@ public sealed record TranscriptStyle(
     bool UseSmartPunctuation);
 ```
 
-Pass this object into the S1-mini prompt adapter.
+Pass the transcript into the prompt adapter.
 
-The adapter must map application categories to the exact style controls supported by S1-mini.
-
-Do not invent unsupported control tokens. If S1-mini does not support a requested setting directly, enforce only what can be achieved reliably through its documented input format.
+The Mumble fine-tune was trained on a single fixed input format: its official system
+prompt, the raw transcript, and nothing else. Style selection stays in the app for
+context classification and history, but is not forwarded to the cleanup model; any
+formatting in its output emerges naturally rather than being forced.
 
 ---
 
@@ -1374,8 +1374,7 @@ Implement the following pipeline.
 2. Flush the resampler.
 3. Finalize the audio file.
 4. Complete the ASR session.
-5. Validate the raw transcript.
-6. Send the raw transcript and selected style to S1-mini.
+6. Send the raw transcript to the cleanup model.
 7. Validate the cleaned result.
 8. Restore and verify the target application.
 9. Insert the cleaned text.
@@ -1385,8 +1384,7 @@ Implement the following pipeline.
 ```
 
 ## Cleanup Failure Fallback
-
-If S1-mini fails but ASR succeeds:
+If cleanup fails but ASR succeeds:
 
 ```text
 1. Preserve the raw transcript.
@@ -1807,8 +1805,7 @@ Produce all of the following:
 3. Working Windows tray application.
 4. Global push-to-talk.
 5. Hands-free recording.
-6. Moonshine local ASR integration.
-7. S1-mini local cleanup integration.
+7. Local Mumble cleanup integration.
 8. Application and website detection.
 9. Output-style classification.
 10. Reliable insertion and clipboard recovery.
@@ -1925,8 +1922,7 @@ Implement:
 Implement:
 
 ```text
-✅ llama.cpp integration
-✅ S1-mini loading
+✅ mumble-cleanup-2stage loading
 ✅ Official prompt adapter
 ✅ Deterministic inference
 ✅ Cleanup validation
@@ -2033,8 +2029,7 @@ The release is complete only when a user can perform this scenario:
 1. Install and launch the app on Windows 11.
 
 2. Select or confirm a microphone.
-
-3. Install or locate the local Moonshine and S1-mini models.
+3. Install or locate the local Moonshine and cleanup models.
 4. Focus a Gmail compose field in Chrome.
 
 5. Hold the push-to-talk shortcut.

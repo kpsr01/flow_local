@@ -1,7 +1,8 @@
 param(
     [string]$Configuration = 'Release',
     [string]$Version = '1.0.0',
-    [switch]$PortableOnly
+    [switch]$PortableOnly,
+    [string]$ReleaseDownloadUrl = 'https://github.com/YOUR-USER/FlowLocal/releases/download/v{0}/FlowLocal-{0}-win-x64-setup.exe'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -34,4 +35,9 @@ if ($PortableOnly) {
 
 & $iscc "/DAppVersion=$Version" $installer
 if ($LASTEXITCODE) { throw "ISCC failed with exit code $LASTEXITCODE." }
+$setup = Join-Path $root "artifacts\installer\FlowLocal-$Version-win-x64-setup.exe"
+$sha256 = (Get-FileHash $setup -Algorithm SHA256).Hash.ToLowerInvariant()
+$manifest = @{ version = $Version; url = ($ReleaseDownloadUrl -f $Version); sha256 = $sha256 } | ConvertTo-Json
+[System.IO.File]::WriteAllText((Join-Path $root 'artifacts\installer\latest.json'), $manifest)
+Write-Host "Update manifest: artifacts\installer\latest.json (upload with the setup exe; sha256 $sha256)"
 

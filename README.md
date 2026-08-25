@@ -55,6 +55,23 @@ Portable-only mode does not require Inno Setup 6 `ISCC`; its publish output is u
 
 The app project is `src\FlowLocal.App\FlowLocal.App.csproj`; the target runtime identifier is `win-x64`.
 
+## Updates
+
+The app can update itself online. Two placeholders must point at the real release host before shipping:
+
+1. `UpdateService.ManifestUrl` in `src/FlowLocal.App/UpdateService.cs` — the hosted `latest.json`. For GitHub Releases use `https://github.com/<owner>/<repo>/releases/latest/download/latest.json` (GitHub serves the newest release's asset).
+2. `-ReleaseDownloadUrl` in `pack.ps1` — the per-version installer URL template.
+
+To ship an update: bump the version, run `.\pack.ps1 -Configuration Release -Version X.Y.Z`, then publish a release tagged `vX.Y.Z` attaching both files from `artifacts\installer`: the setup exe and `latest.json` (which pack.ps1 generates with the installer's SHA-256). The app verifies the downloaded installer against that hash before running it.
+
+For users: the tray menu has **Check for updates**; the app also checks quietly 30 seconds after startup and shows a tray notification when a newer version exists. Installing downloads the setup, verifies it, exits FlowLocal, and runs the installer silently — history, recordings, and models under `%LOCALAPPDATA%\FlowLocal` are preserved, and the app relaunches afterwards.
+
+## Uninstall
+
+From inside the app: **Settings > Models and diagnostics > Uninstall FlowLocal**. It confirms once, exits, and runs the setup program's silent uninstaller, which removes the program files and all local data under `%LOCALAPPDATA%\FlowLocal` — history, recordings, settings, and both downloaded models — with no further prompts.
+
+The standard Windows entry (**Settings > Apps > FlowLocal**, or *Uninstall* in the Start-menu group) also works; it asks whether to delete local history and recordings and defaults to keeping them for a future installation. The in-app option always removes everything.
+
 ## Run instructions
 
 After installing the speech and cleanup models:

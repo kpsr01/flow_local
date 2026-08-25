@@ -59,14 +59,14 @@ Type: files; Name: "{localappdata}\FlowLocal\Models\mumble-cleanup-2stage-q4_0.g
 Type: filesandordirs; Name: "{localappdata}\FlowLocal\Models\moonshine-streaming-medium"
 
 [Icons]
-Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExeName}"
+Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExeName}"; IconFilename: "{app}\{#AppExeName}"; IconIndex: 0; AppUserModelID: "FlowLocal.App"
 Name: "{group}\Uninstall {#AppName}"; Filename: "{uninstallexe}"
 Name: "{userdesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; Tasks: desktopicon
 Name: "{userstartup}\{#AppName}"; Filename: "{app}\{#AppExeName}"; Parameters: "--background"; Tasks: startup
 
 [Run]
 Filename: "{app}\{#AppExeName}"; Description: "Launch {#AppName} now"; \
-    Flags: nowait postinstall skipifsilent
+    Flags: nowait postinstall
 
 [Code]
 const
@@ -85,10 +85,14 @@ end;
 
 function DeleteHistory: Boolean;
 begin
-  Result := SuppressibleMsgBox(
-    'Delete FlowLocal local history and recordings?'#13#10#13#10 +
-    'Choose No to preserve them for a future installation.',
-    mbConfirmation, MB_YESNO, IDNO) = IDYES;
+  if WizardSilent() then
+    { In-app uninstall already confirmed full removal; silent means delete everything. }
+    Result := True
+  else
+    Result := SuppressibleMsgBox(
+      'Delete FlowLocal local history and recordings?'#13#10#13#10 +
+      'Choose No to preserve them for a future installation.',
+      mbConfirmation, MB_YESNO, IDNO) = IDYES;
 end;
 
 procedure InitializeUninstallProgressForm();

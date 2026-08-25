@@ -18,6 +18,9 @@
   <ItemGroup>
     <InternalsVisibleTo Include="FlowLocal.Core.Tests" />
   </ItemGroup>
+  <ItemGroup>
+    <Resource Include="AppIcon.ico" />
+  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\FlowLocal.Core\FlowLocal.Core.csproj" />

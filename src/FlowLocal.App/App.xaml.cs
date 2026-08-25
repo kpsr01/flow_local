@@ -1,8 +1,11 @@
 using System.Drawing;
 using System.IO;
+using System.Diagnostics;
 using System.Windows;
+using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using FlowLocal.Core;
+using System.Runtime.InteropServices;
 using Microsoft.Extensions.Logging.Abstractions;
 using Forms = System.Windows.Forms;
 
@@ -22,13 +25,19 @@ public partial class App : Application
     private AppSettingsStore? _appSettings;
     private HistoryActionService? _historyActions;
     private bool _retryBusy;
+    private bool _updateBusy;
     private bool _dictationReady;
     private Mutex? _singleInstance;
     private EventWaitHandle? _activationSignal;
 
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+    private static extern void SetCurrentProcessExplicitAppUserModelID(string appId);
+
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        // Match the Start-menu shortcut so Windows groups the running app under the packaged identity.
+        SetCurrentProcessExplicitAppUserModelID("FlowLocal.App");
         // The tray app must survive UI-layer faults: log, surface on the overlay, keep running.
         DispatcherUnhandledException += OnDispatcherUnhandledException;
         AppDomain.CurrentDomain.UnhandledException += (_, args) =>
@@ -51,11 +60,12 @@ public partial class App : Application
         var showMainWindow = !e.Args.Contains("--background", StringComparer.OrdinalIgnoreCase);
         _settingsWindow = new MainWindow();
         MainWindow = _settingsWindow;
-        _settingsWindow.Icon = FlowIcon.CreateImageSource();
+        _settingsWindow.Icon = LoadAppIcon();
         _overlayWindow = new OverlayWindow();
-        _overlayWindow.Icon = FlowIcon.CreateImageSource();
+        _overlayWindow.Icon = LoadAppIcon();
         _overlayWindow.ShowInitializing();
         _overlayWindow.RetryRequested += OnOverlayRetryRequested;
+        _settingsWindow.UninstallRequested += (_, uninstaller) => LaunchUninstaller(uninstaller);
         _overlayWindow.OpenAppRequested += (_, _) => ShowSettings();
         _overlayWindow.OpenHistoryRequested += (_, _) => ShowHistory();
         _overlayWindow.StartRequested += OnPillStartRequested;
@@ -104,6 +114,7 @@ public partial class App : Application
 
         var menu = new Forms.ContextMenuStrip { AccessibleName = "FlowLocal tray menu" };
         menu.Items.Add("&Settings", null, (_, _) => ShowSettings()).AccessibleName = "Open FlowLocal settings";
+        menu.Items.Add("Check for &updates", null, OnCheckForUpdates).AccessibleName = "Check online for FlowLocal updates";
         menu.Items.Add("&History", null, (_, _) => ShowHistory()).AccessibleName = "Open dictation history";
         menu.Items.Add("E&xit", null, (_, _) => ExitApplication()).AccessibleName = "Exit FlowLocal";
         _notifyIcon = new Forms.NotifyIcon
@@ -114,6 +125,7 @@ public partial class App : Application
             Visible = true
         };
         _notifyIcon.DoubleClick += (_, _) => ShowSettings();
+        _ = RunQuietUpdateCheckAsync();
         _ = InitializeAsync(historyActions);
         if (showMainWindow) ShowSettings();
     }
@@ -355,7 +367,83 @@ public partial class App : Application
         _overlayWindow?.ShowOverlay();
         return Task.CompletedTask;
     }
+
+
+    /// <summary>Loads the same multi-size icon embedded in the executable for WPF windows.</summary>
+    private static System.Windows.Media.ImageSource LoadAppIcon()
+    {
+        var decoder = BitmapDecoder.Create(new Uri("pack://application:,,,/AppIcon.ico"), BitmapCreateOptions.None, BitmapCacheOption.OnLoad);
+        return decoder.Frames[^1];
+    }
+    private void LaunchUninstaller(string uninstaller)
+    {
+        // Delayed start: let this process and the ASR worker exit and release files before deletion.
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = "cmd.exe",
+            Arguments = "/c timeout /t 2 /nobreak >nul & start \"\" \"" + uninstaller + "\" /SILENT /SUPPRESSMSGBOXES",
+            CreateNoWindow = true,
+            UseShellExecute = false
+        });
+        ExitApplication();
+    }
     private static async Task RunControllerAsync(Func<Task>? action) { if (action is not null) await action(); }
+
+    private async void OnCheckForUpdates(object? sender, EventArgs e) => await CheckForUpdatesAsync(quiet: false);
+
+    private async Task RunQuietUpdateCheckAsync()
+    {
+        // ponytail: single quiet check 30s after startup, no retry schedule — add periodic checks if users miss updates.
+        await Task.Delay(TimeSpan.FromSeconds(30));
+        await CheckForUpdatesAsync(quiet: true);
+    }
+
+    private async Task CheckForUpdatesAsync(bool quiet)
+    {
+        if (_updateBusy) return;
+        _updateBusy = true;
+        try
+        {
+            var result = await UpdateService.CheckAsync();
+            if (result.Update is null)
+            {
+                if (!quiet)
+                    ShowUpdateBalloon(result.Error
+                        ?? $"FlowLocal is up to date (version {UpdateService.CurrentVersion.ToString(3)}).");
+                return;
+            }
+
+            var update = result.Update;
+            if (quiet)
+            {
+                ShowUpdateBalloon($"FlowLocal {update.Version} is available. Open the tray menu and choose Check for updates to install it.");
+                return;
+            }
+
+            var choice = MessageBox.Show(
+                _settingsWindow,
+                $"FlowLocal {update.Version} is available (installed: {UpdateService.CurrentVersion.ToString(3)}).\n\nDownload and install it now? FlowLocal exits while the installer runs; history and models are kept.",
+                "FlowLocal update",
+                MessageBoxButton.OKCancel,
+                MessageBoxImage.Information);
+            if (choice != MessageBoxResult.OK) return;
+            ShowUpdateBalloon($"Downloading FlowLocal {update.Version}…");
+            var installer = await UpdateService.DownloadAsync(update);
+            UpdateService.Apply(installer);
+            ExitApplication();
+        }
+        catch (Exception exception)
+        {
+            if (!quiet) ShowUpdateBalloon($"Update failed: {exception.Message}");
+        }
+        finally
+        {
+            _updateBusy = false;
+        }
+    }
+
+    private void ShowUpdateBalloon(string message) =>
+        _notifyIcon?.ShowBalloonTip(7000, "FlowLocal updates", message, Forms.ToolTipIcon.Info);
 
     private void ShowSettings()
     {

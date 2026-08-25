@@ -9,7 +9,7 @@ FlowLocal enables dictation only after history, the Canary speech model, and the
 - Confirm the machine is online for the first model download, or that `%LOCALAPPDATA%\FlowLocal\Models\canary-180m-flash-gguf` contains `canary-180m-flash-Q4_K_M.gguf`.
 - If a download was interrupted, delete the `.download` partial file (or the whole folder) and restart FlowLocal so the worker fetches it again.
 - Ensure the Windows account can write to `%LOCALAPPDATA%\FlowLocal\Models`. FlowLocal owns that directory.
-- First initialization loads the GGUF and runs a warm-up inference and can take a few seconds on some machines. Do not substitute `FakeAsrService`; it is not wired into production startup.
+- First initialization loads the GGUF and runs a warm-up inference and can take a few seconds on some machines.
 
 ### “Set FLOWLOCAL_CLEANUP_MODEL_PATH…” or cleanup model not found
 

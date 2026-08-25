@@ -40,15 +40,15 @@ dotnet build .\FlowLocal.slnx -c Release
 To create a release package, run the normal installer mode:
 
 ```powershell
-.\pack.ps1 -Configuration Release -Version 1.0.0
+.\pack.ps1 -Configuration Release -Version 1.2.0
 ```
 
-Normal mode requires Inno Setup 6 `ISCC`. It writes `artifacts\installer\FlowLocal-1.0.0-win-x64-setup.exe` for the command above.
+Normal mode requires Inno Setup 6 `ISCC`. It writes `artifacts\installer\FlowLocal-1.2.0-win-x64-setup.exe` for the command above.
 
 For a portable package without Inno Setup, run:
 
 ```powershell
-.\pack.ps1 -Configuration Release -Version 1.0.0 -PortableOnly
+.\pack.ps1 -Configuration Release -Version 1.2.0 -PortableOnly
 ```
 
 Portable-only mode does not require Inno Setup 6 `ISCC`; its publish output is under `artifacts\publish\win-x64`.

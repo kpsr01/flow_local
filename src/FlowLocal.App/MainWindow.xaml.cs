@@ -568,6 +568,26 @@ public partial class MainWindow : Window
         catch (Exception exception) { HistoryStatusText.Text = $"Data directory could not be opened: {exception.Message}"; }
     }
 
+    public event EventHandler<string>? UninstallRequested;
+
+    private void Uninstall_Click(object sender, RoutedEventArgs e)
+    {
+        var uninstaller = Path.Combine(AppContext.BaseDirectory, "unins000.exe");
+        if (!File.Exists(uninstaller))
+        {
+            UninstallStatusText.Text = "This copy was not installed by the FlowLocal setup program; there is nothing to uninstall.";
+            return;
+        }
+        var choice = MessageBox.Show(
+            this,
+            "Uninstall FlowLocal completely?\n\nThis removes the program and all local data: history, recordings, settings, and the downloaded speech models.",
+            "Uninstall FlowLocal",
+            MessageBoxButton.OKCancel,
+            MessageBoxImage.Warning);
+        if (choice != MessageBoxResult.OK) return;
+        UninstallRequested?.Invoke(this, uninstaller);
+    }
+
     private async Task<bool> RunHistoryAsync(string pending, string success, Func<CancellationToken, Task> operation, CancellationToken cancellationToken = default)
     {
         if (_historyBusy) return false;

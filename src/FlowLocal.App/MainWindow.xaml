@@ -284,6 +284,14 @@
                                     <TextBlock Grid.Row="6" Text="Microphone mode" Style="{StaticResource LabelText}"/><TextBlock Grid.Row="6" Grid.Column="1" x:Name="MicModeText" Style="{StaticResource ValueText}" Text="—"/>
                                 </Grid>
                                 <Button MinWidth="110" Content="_Refresh" Click="RefreshDiagnostics_Click"/>
+                                <Separator Style="{StaticResource SeparatorLine}" Margin="0,18,0,18"/>
+                                <TextBlock Style="{StaticResource SectionTitle}" Text="Uninstall" />
+                                <TextBlock Style="{StaticResource SectionSub}" Margin="0,3,0,12"
+                                           Text="Remove the FlowLocal program and all local data: history, recordings, settings, and downloaded models." />
+                                <StackPanel Orientation="Horizontal">
+                                    <Button MinWidth="170" Content="Uninstall FlowLocal…" Click="Uninstall_Click"/>
+                                    <TextBlock x:Name="UninstallStatusText" Margin="16,0,0,0" VerticalAlignment="Center" Style="{StaticResource LabelText}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" AutomationProperties.Name="Uninstall status"/>
+                                </StackPanel>
                             </StackPanel>
                         </Border>
                     </Grid>

@@ -1,20 +1,56 @@
 # FlowLocal
 
-FlowLocal is a Windows 11 x64 WPF dictation application. Hold the global shortcut, speak into the Windows default recording device, and release to run English speech recognition locally, clean the transcript with a local Sotto cleanup GGUF model, classify the active target, and insert the result. The application is still awaiting the documented manual compatibility and performance runs; see [Known limitations](docs/known-limitations.md).
+FlowLocal is a Windows 11 x64 WPF dictation application. Hold the global shortcut to snapshot the destination and record speech; release to transcribe, format the dictated text, and insert at the captured cursor. Choose local Canary/Sotto inference or AssemblyAI Sync STT and LLM Gateway. This is dictation, not an agent: rewriting must preserve the request, not answer or execute it. Real-world compatibility and performance remain subject to the documented manual runs; see [Known limitations](docs/known-limitations.md).
 
 ## System requirements
 
 - Windows 11 x64. The projects target `net9.0-windows10.0.26100.0`; Windows 10 is not a supported target.
 - .NET 9 SDK to build or run from source. A self-contained packaged build does not require a separately installed .NET runtime.
 - A working Windows recording device and microphone permission for desktop applications.
-- Disk space and memory for the app, the Canary 180M Flash GGUF (~133 MB in `%LOCALAPPDATA%\FlowLocal\Models\canary-180m-flash-gguf`), and the Sotto cleanup GGUF (~229 MB).
-- Internet access for initial NuGet restore and the first speech-model download. Dictation inference is local after those assets are installed.
+- For local inference, disk space and memory for Canary 180M Flash (~133 MB) and the Sotto cleanup GGUF (~229 MB).
+- Internet access for initial NuGet restore. Local inference needs model assets installed first; AssemblyAI inference needs an API key and network access for every dictation.
 
-## Speech model
+## AssemblyAI cloud dictation
 
-ASR runs [Canary 180M Flash](https://huggingface.co/handy-computer/canary-180m-flash-gguf) (Q4_K_M GGUF) through [transcribe.cpp](https://github.com/handy-computer/transcribe.cpp) (CPU backend) inside the `FlowLocal.AsrWorker.exe` companion process. The worker loads `canary-180m-flash-Q4_K_M.gguf` from `%LOCALAPPDATA%\FlowLocal\Models\canary-180m-flash-gguf`, keeps the model warm between dictations, and decodes greedily with punctuation/capitalization, timestamps, and translation disabled — raw lowercase text is passed to Sotto for cleanup. The installer downloads the file; when running from source, the worker downloads it from Hugging Face at first init, so the first launch may need network access.
+Open **Settings > Models and diagnostics**:
 
-## Cleanup model installation
+1. Paste your **AssemblyAI API key** into the masked field.
+2. Choose **AssemblyAI — Sync STT** for speech recognition and **AssemblyAI — LLM Gateway** for rewriting.
+3. Click **Save key and providers**, exit FlowLocal from the tray, and reopen it.
+
+The key and provider choices survive restarts; no shell commands are needed. The key is encrypted with Windows DPAPI for the current Windows user in `%LOCALAPPDATA%\FlowLocal\app-settings.json`, not stored as plaintext. Clear the key field and save to remove the saved credential. Other processes running as the same Windows user can decrypt it; re-enter the key if copied settings cannot be decrypted.
+
+Environment configuration remains available when the corresponding saved setting is absent. Saved provider choices and the saved key take precedence:
+
+| Variable | Values and default |
+| --- | --- |
+| `FLOWLOCAL_ASR_PROVIDER` | `local` (default) or `assemblyai` |
+| `FLOWLOCAL_REWRITE_PROVIDER` | `sotto` or `assemblyai`; defaults to AssemblyAI when cloud ASR is selected, otherwise Sotto |
+| `ASSEMBLYAI_API_KEY` | Key fallback when no saved credential exists; either cloud provider requires a key |
+| `FLOWLOCAL_ASSEMBLYAI_LLM_MODEL` | Optional Gateway model override; default `qwen3.5-4b-32k-fast` |
+
+Exit and restart FlowLocal after changing the key or providers. Clearing the saved key restores environment-key fallback; it does not remove an environment variable. For A/B comparison, keep AssemblyAI speech recognition and select **Local — Sotto** for rewriting; install the local cleanup model below. With both providers set to AssemblyAI, no local model is loaded or downloaded at runtime. Normal installer packaging still includes local models.
+
+Speech uses [Sync STT](https://www.assemblyai.com/docs/api-reference/sync-api/transcribe), model `universal-3-5-pro`, with one multipart PCM request after release—not asynchronous upload/polling. A reusable connection is [pre-warmed](https://www.assemblyai.com/docs/sync-stt/connection-pre-warming) at startup and recording start. Clips must be 80 ms–120 seconds at the app's 16 kHz, 16-bit mono format.
+
+Recognition receives a short destination-specific prompt plus optional keyterms. The separate [LLM Gateway](https://www.assemblyai.com/docs/llm-gateway/quickstart) request formats email, chat, coding instructions, terminal text, document prose, or generic text. It is instructed not to invent information, answer questions, solve coding requests, or act. A five-second rewrite timeout, HTTP error, malformed/truncated output, or validation failure uses the exact raw transcript without another Gateway attempt. STT errors fail normally rather than pretending no speech was detected.
+
+Optional vocabulary is configured while FlowLocal is closed by adding fields to the existing `%LOCALAPPDATA%\FlowLocal\app-settings.json` (retain its other settings):
+
+```json
+"Vocabulary": ["Priya", "Acme", "OAuth", "login.ts"],
+"RememberedCorrections": { "pre ya": "Priya", "login dot t s": "login.ts" }
+```
+
+Correction values are recognition hints, not string replacements. Corrections are manually maintained; there is no automatic learning or new vocabulary UI. Hints are trimmed, deduplicated, and bounded to 2,048 total characters. A known application name and short filename from a code-editor title may also be included. No selected-text, nearby-content, page, or project scraping is performed.
+
+Debug builds emit `[Dictation]` messages to debugger output: destination label, profile, provider, audio duration, STT/rewrite/insertion duration, total post-release time, and fallback status. They do not log transcript text, full titles, keyterms, or API keys. Use real recordings and a configured key for latency and formatting comparisons; synthetic protocol checks are not model-quality measurements.
+
+## Local speech model
+
+ASR runs [Canary 180M Flash](https://huggingface.co/handy-computer/canary-180m-flash-gguf) (Q4_K_M GGUF) through [transcribe.cpp](https://github.com/handy-computer/transcribe.cpp) (CPU backend) inside the `FlowLocal.AsrWorker.exe` companion process. The worker loads `canary-180m-flash-Q4_K_M.gguf` from `%LOCALAPPDATA%\FlowLocal\Models\canary-180m-flash-gguf`, keeps the model warm between dictations, and decodes greedily with punctuation/capitalization, timestamps, and translation disabled — raw lowercase text is passed to the selected rewrite provider. The installer downloads the file; when running from source, the worker downloads it from Hugging Face at first init, so the first launch may need network access.
+
+## Local cleanup model installation
 
 The cleanup stage uses [sotto-cleanup-lfm25-350m](https://huggingface.co/juanquivilla/sotto-cleanup-lfm25-350m) (a full fine-tune of `LiquidAI/LFM2.5-350M-Base`) loaded by LLamaSharp's CPU backend from a Q4_K_M GGUF converted from the repo's BF16 checkpoint with llama.cpp (`convert_hf_to_gguf.py --outtype bf16`, then `llama-quantize Q4_K_M`; the upstream repo publishes no GGUF, so the file must be built or obtained from your own mirror). A normal install places `sotto-cleanup-lfm25-350m-q4_k_m.gguf` into `%LOCALAPPDATA%\FlowLocal\Models` during setup (removing retired cleanup GGUFs); no environment variable is required.
 
@@ -27,7 +63,7 @@ When running from source without the installer, either place `sotto-cleanup-lfm2
   "User")
 ```
 
-Restart the shell or Explorer-launched application after changing the user environment variable. There is no in-app model picker. The app sends every transcript through Sotto's exact training format — a plain `### Input:` / `### Output:` completion block with no chat template and no system prompt — decodes greedily at temperature 0 with the model card's recommended `repetition_penalty=1.05` and `max_new_tokens = max(900, 1.5 x input_words)` capped at the next `###` marker, and keeps the model loaded between requests on an 8192-token context; set `FLOWLOCAL_CLEANUP_GPU=1` to experiment with full GPU offload (it falls back to CPU automatically).
+Restart the shell or Explorer-launched application after changing the user environment variable. There is no in-app model picker. When Sotto is selected, the app sends each transcript through its exact training format — a plain `### Input:` / `### Output:` completion block with no chat template and no system prompt — decodes greedily at temperature 0 with the model card's recommended `repetition_penalty=1.05` and `max_new_tokens = max(900, 1.5 x input_words)` capped at the next `###` marker, and keeps the model loaded between requests on an 8192-token context; set `FLOWLOCAL_CLEANUP_GPU=1` to experiment with full GPU offload (it falls back to CPU automatically).
 
 ## Build instructions
 
@@ -74,7 +110,7 @@ The standard Windows entry (**Settings > Apps > FlowLocal**, or *Uninstall* in t
 
 ## Run instructions
 
-After installing the speech and cleanup models:
+After configuring AssemblyAI as above, or installing the models for the default local providers:
 
 ```powershell
 dotnet run --project .\src\FlowLocal.App\FlowLocal.App.csproj -c Release
@@ -84,9 +120,9 @@ FlowLocal starts in the notification area. Right-click its tray icon for **Setti
 
 ## First-run setup
 
-1. Install FlowLocal normally (the installer places the Canary speech model and the cleanup GGUF), or run once from source with network access so the worker can fetch the speech model into `%LOCALAPPDATA%\FlowLocal\Models\canary-180m-flash-gguf`, and place `sotto-cleanup-lfm25-350m-q4_k_m.gguf` in `%LOCALAPPDATA%\FlowLocal\Models` or set `FLOWLOCAL_CLEANUP_MODEL_PATH` as shown above.
+1. Configure the AssemblyAI providers above, or install the local speech and cleanup models. A local source run can download Canary; Sotto needs its GGUF in `%LOCALAPPDATA%\FlowLocal\Models` or `FLOWLOCAL_CLEANUP_MODEL_PATH`.
 2. In Windows, select and test the intended default input device and allow desktop-app microphone access.
-3. Start FlowLocal and wait for the initialization overlay to disappear. The worker may download and warm up the Canary model on this first run; the cleanup model is then loaded from its discovered or configured file.
+3. Start FlowLocal and wait for the initialization overlay to disappear. Only selected providers initialize. Local model loading may take time; unavailable cleanup does not block speech capture and falls back to raw text.
 4. Open **Settings**, review Application styles and History/privacy defaults, then use **Test current target** while the intended target is active.
 5. Focus a writable text field, hold Ctrl+Windows while speaking, and release either key to transcribe, clean, and insert. Press Escape while held to cancel.
 
@@ -116,11 +152,12 @@ The chord is a configurable combination of the **Ctrl**, **Alt**, **Shift**, and
 ## Privacy behavior
 
 - Recording begins only after the explicit shortcut and the overlay indicates listening.
-- ASR and cleanup inference run locally. Initial dependency/model acquisition may use the network; the app itself contains no paid/cloud API integration.
+- The default local providers keep inference on-device; initial dependency/model acquisition may use the network. Selecting AssemblyAI ASR sends audio, a short recognition prompt, and keyterms to Sync STT. Selecting AssemblyAI rewriting sends the raw transcript and a category-specific formatting prompt to LLM Gateway.
 - Website detection stores only a normalized domain, never a full URL path or query string. Website detection can be disabled in Settings.
 - The app captures active-window/focused-control metadata for classification and safe insertion. It does not read complete page content and blocks direct insertion into password fields or protected/higher-integrity targets.
 - History is local. Defaults save audio for 7 days and transcripts/metadata for 30 days. Settings offers 1, 7, 30, 90 days, or Forever, plus **Clear recordings** and **Delete all history**. Setting **Save recordings for retry and playback** off removes audio under retention processing; audio is still written during an active/recoverable session.
-- Cleanup failure or invalid output falls back to the raw ASR transcript and marks a cleanup error; it does not send text to a remote service.
+- Cloud processing is subject to AssemblyAI's account/provider policies. Local history retention or deletion does not delete cloud-held data. Do not select cloud providers for material that must remain on-device.
+- Cleanup failure or invalid output falls back to the raw ASR transcript and marks a cleanup error. It does not silently switch providers or invoke an agent.
 
 ## Data storage locations
 
@@ -133,6 +170,7 @@ All mutable data is under `%LOCALAPPDATA%\FlowLocal`:
 | `%LOCALAPPDATA%\FlowLocal\Models\canary-180m-flash-gguf\` | Canary 180M Flash Q4_K_M GGUF (downloaded here by the installer or the worker) |
 | `%LOCALAPPDATA%\FlowLocal\Recordings\<session-id>.wav` | Recoverable/session audio and retained recordings |
 | `%LOCALAPPDATA%\FlowLocal\application-styles.json` | Application/domain classification overrides and classification switches |
+| `%LOCALAPPDATA%\FlowLocal\app-settings.json` | Shortcut, microphone, overlay, vocabulary, correction and provider settings; optional Windows DPAPI-encrypted AssemblyAI key |
 
 A manually configured cleanup GGUF remains at the path supplied by `FLOWLOCAL_CLEANUP_MODEL_PATH`. Use **Open data directory** in Settings to open FlowLocal's local data folder.
 

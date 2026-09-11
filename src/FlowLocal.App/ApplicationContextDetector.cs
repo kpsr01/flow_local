@@ -27,7 +27,8 @@ public sealed class ApplicationContextDetector : IApplicationContextDetector
         {
             try
             {
-                domain = await _detectDomain(target, browser, cancellationToken).ConfigureAwait(false);
+                domain = await _detectDomain(target, browser, cancellationToken)
+                    .WaitAsync(TimeSpan.FromMilliseconds(250), cancellationToken).ConfigureAwait(false);
                 if (domain is not null)
                     diagnostic = new ContextDetectionDiagnostic(ContextDetectionConfidence.High, "BrowserAddressBar");
             }
@@ -42,6 +43,26 @@ public sealed class ApplicationContextDetector : IApplicationContextDetector
                     "ForegroundWindow",
                     $"Browser domain detection failed: {exception.Message}");
             }
+        }
+
+        if (detectWebsite && application.Browser is not null && domain is null)
+        {
+            domain = DomainNormalizer.TryNormalize(target.WindowTitle);
+            if (domain is null)
+            {
+                // ponytail: branded title segments only; no extension or page-content scraping.
+                var segments = target.WindowTitle.Split([" - ", " — ", " | ", " – "], StringSplitOptions.TrimEntries);
+                domain = segments.Select(segment => segment.ToLowerInvariant() switch
+                {
+                    "gmail" => "mail.google.com",
+                    "slack" => "slack.com",
+                    "microsoft teams" => "teams.microsoft.com",
+                    "google docs" => "docs.google.com",
+                    _ => null
+                }).FirstOrDefault(value => value is not null);
+            }
+            if (domain is not null)
+                diagnostic = new ContextDetectionDiagnostic(ContextDetectionConfidence.Low, "BrowserWindowTitle");
         }
 
         return new ApplicationContext(

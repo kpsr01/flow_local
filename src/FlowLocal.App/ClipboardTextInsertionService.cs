@@ -48,6 +48,8 @@ public sealed class ClipboardTextInsertionService : ITextInsertionService
 
         if (target.IsPasswordField != false)
             return await RecoverAsync(text, "Text was not inserted because the focused field is protected or unknown.", cancellationToken);
+        if (target.IsTerminal && text.Any(char.IsControl))
+            return await RecoverAsync(text, "Terminal text contains control characters. It was copied for review, not pasted or executed.", cancellationToken);
         if (!target.IsInjectionSafe ||
             !TargetPolicy.IsInjectionSafe(target.CurrentIntegrityRid, target.TargetIntegrityRid) ||
             target.WindowHandle == 0 || target.ProcessId <= 0 ||

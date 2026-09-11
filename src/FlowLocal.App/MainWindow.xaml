@@ -26,7 +26,7 @@
                         <StackPanel Margin="12,0,0,0" VerticalAlignment="Center">
                             <TextBlock Text="FlowLocal" FontFamily="{StaticResource FontDisplay}" FontSize="17" FontWeight="SemiBold"
                                        Foreground="{StaticResource BrushTextPrimary}" />
-                            <TextBlock Text="Local dictation" FontSize="11" Foreground="{StaticResource BrushTextTertiary}" Margin="0,-1,0,0" />
+                            <TextBlock Text="Context-aware dictation" FontSize="11" Foreground="{StaticResource BrushTextTertiary}" Margin="0,-1,0,0" />
                         </StackPanel>
                     </StackPanel>
                 </StackPanel>
@@ -112,7 +112,7 @@
                                     </StackPanel>
                                 </WrapPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
-                                    <Button Style="{StaticResource AccentButton}" MinWidth="118" Content="_Save general" Click="SaveGeneral_Click"/>
+                                    <Button x:Name="SaveGeneralButton" Style="{StaticResource AccentButton}" MinWidth="118" Content="_Save general" Click="SaveGeneral_Click"/>
                                     <TextBlock x:Name="GeneralStatusText" Margin="16,0,0,0" VerticalAlignment="Center"
                                                Style="{StaticResource LabelText}"
                                                AutomationProperties.LiveSetting="Polite" AutomationProperties.Name="General settings status"/>
@@ -269,9 +269,41 @@
                     <Grid x:Name="PageDiagnostics" Visibility="Collapsed">
                         <Border Style="{StaticResource SectionCard}">
                             <StackPanel>
-                                <TextBlock Style="{StaticResource SectionTitle}" Text="Models and diagnostics" />
+                                <TextBlock Style="{StaticResource SectionTitle}" Text="AssemblyAI and providers" />
                                 <TextBlock Style="{StaticResource SectionSub}" Margin="0,3,0,16"
-                                           Text="Live view of local model readiness and runtime facts. No transcripts leave this machine." />
+                                           Text="Choose local processing or AssemblyAI cloud dictation. Cloud speech sends audio and recognition context; cloud rewriting sends transcripts." />
+                                <Grid Margin="0,0,0,12">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="190"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
+                                    <TextBlock Style="{StaticResource LabelText}" VerticalAlignment="Center" Text="Speech recognition" />
+                                    <ComboBox x:Name="AsrProviderComboBox" Grid.Column="1" Width="280" HorizontalAlignment="Left" Margin="0,0,0,12"
+                                              FocusVisualStyle="{StaticResource SettingsFocusVisual}" AutomationProperties.Name="Speech recognition provider">
+                                        <ComboBoxItem Content="Local — Canary" Tag="local" />
+                                        <ComboBoxItem Content="AssemblyAI — Sync STT" Tag="assemblyai" />
+                                    </ComboBox>
+                                    <TextBlock Grid.Row="1" Style="{StaticResource LabelText}" VerticalAlignment="Center" Text="Transcript rewriting" />
+                                    <ComboBox x:Name="RewriteProviderComboBox" Grid.Row="1" Grid.Column="1" Width="280" HorizontalAlignment="Left" Margin="0,0,0,12"
+                                              FocusVisualStyle="{StaticResource SettingsFocusVisual}" AutomationProperties.Name="Transcript rewrite provider">
+                                        <ComboBoxItem Content="Local — Sotto" Tag="sotto" />
+                                        <ComboBoxItem Content="AssemblyAI — LLM Gateway" Tag="assemblyai" />
+                                    </ComboBox>
+                                    <TextBlock Grid.Row="2" Style="{StaticResource LabelText}" VerticalAlignment="Center" Text="AssemblyAI API key" />
+                                    <PasswordBox x:Name="AssemblyAIKeyPasswordBox" Grid.Row="2" Grid.Column="1" MaxLength="512" MinHeight="36" Padding="9,6"
+                                                 Background="{StaticResource BrushField}" Foreground="{StaticResource BrushTextPrimary}"
+                                                 BorderBrush="{StaticResource BrushStroke}" CaretBrush="{StaticResource BrushEmber}"
+                                                 FocusVisualStyle="{StaticResource SettingsFocusVisual}" AutomationProperties.Name="AssemblyAI API key"
+                                                 AutomationProperties.HelpText="Saved encrypted for this Windows account. Clear this field and save to remove the saved key." />
+                                </Grid>
+                                <TextBlock Style="{StaticResource SectionSub}" Margin="0,0,0,12"
+                                           Text="The key stays masked and is saved with Windows user-level encryption. Clear it and save to remove it. Saved settings take precedence over environment variables. Restart FlowLocal after saving." />
+                                <Button x:Name="SaveProvidersButton" Content="_Save key and providers" HorizontalAlignment="Left" IsEnabled="False"
+                                        Style="{StaticResource AccentButton}" FocusVisualStyle="{StaticResource SettingsFocusVisual}" Click="SaveProviders_Click" />
+                                <TextBlock x:Name="ProviderSettingsStatusText" Style="{StaticResource SectionSub}" Margin="0,10,0,0"
+                                           AutomationProperties.LiveSetting="Polite" AutomationProperties.Name="Provider settings status" />
+                                <Separator Style="{StaticResource SeparatorLine}" Margin="0,18,0,18"/>
+                                <TextBlock Style="{StaticResource SectionTitle}" Text="Models and diagnostics" />
+                                <TextBlock x:Name="ProviderPrivacyText" Style="{StaticResource SectionSub}" Margin="0,3,0,16"
+                                           Text="Selected provider readiness and privacy information." TextWrapping="Wrap" />
                                 <Grid Margin="0,4,0,14">
                                     <Grid.ColumnDefinitions><ColumnDefinition Width="190"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                                     <Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions>

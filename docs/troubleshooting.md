@@ -2,7 +2,20 @@
 
 ## Initialization overlay reports a failure
 
-FlowLocal enables dictation only after history, the Canary speech model, and the cleanup model initialize. Read the full overlay message, correct the named prerequisite, then exit from the tray menu and restart; the current UI has no general initialization retry command.
+FlowLocal enables dictation after history and the selected ASR provider initialize. Cleanup unavailability is nonfatal and uses raw-transcript fallback. Read the full overlay message, correct the named prerequisite, then exit from the tray menu and restart; the current UI has no general initialization retry command.
+
+## AssemblyAI configuration or request failures
+
+- Open **Settings > Models and diagnostics**, enter the AssemblyAI API key, choose the speech/rewrite providers, and click **Save key and providers**. Exit from the tray and reopen FlowLocal to apply. These controls are available even if model initialization fails; saving is not a remote key-validity check.
+- Saved provider choices and the encrypted key override environment configuration. If a saved key cannot be decrypted for this Windows account, enter it again and save. Clearing the key field and saving removes only the saved credential; `ASSEMBLYAI_API_KEY` remains a fallback if set in the launching environment.
+- STT HTTP failures are real transcription errors, not “no speech.” Check key/account access for 401/403, quota or rate limits for 429, and network/service availability for timeouts or 5xx. Do not paste API keys or private transcripts into logs.
+- Record at least 80 ms and no more than 120 seconds with Sync STT. The app uses 16 kHz, 16-bit mono PCM. Audio remains available for manual History retry according to local retention settings.
+- A missing rewrite key, rejected model, failed Gateway request, malformed/truncated response, or five-second timeout yields the exact raw transcript and a cleanup error. There is no automatic second cloud request. Check `FLOWLOCAL_ASSEMBLYAI_LLM_MODEL` against models available to your account.
+- Gateway quotas are model/account-specific. A live response may report a lower limit than the general documentation; inspect `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset` in a diagnostic API request. A 429 produces immediate raw fallback rather than delaying insertion until the quota resets. Request additional access/limits through AssemblyAI if needed.
+- HTTP 400 with `metadata.errors` reporting “Your account does not have access to this LLM Gateway model” is an account-access restriction, not an invalid API key. Choosing a model listed in the public documentation does not grant access to it.
+- Run a Debug build and view `[Dictation]` debugger output to compare STT, rewrite, insertion, and total post-release time. Logs deliberately omit transcript bodies and full destination titles.
+
+## Local provider initialization
 
 ### Speech model is missing or not ready
 
@@ -69,7 +82,7 @@ If `%LOCALAPPDATA%\FlowLocal\application-styles.json` is malformed or unreadable
 
 ## Cleanup output is unchanged or unsuitable
 
-If the cleanup model throws or its output fails validation, FlowLocal retries once and then inserts the raw ASR transcript while recording `CleanupFailed`. This is deliberate data-preserving fallback, not proof that cleanup succeeded. Inspect the History entry's raw/cleaned text and error, confirm the correct target classification, and verify the configured GGUF. The cleanup model is constrained to transcript cleanup; it is not intended to answer or execute dictated prompts.
+If Sotto throws or its output fails validation, FlowLocal retries once and then uses the raw ASR transcript while recording `CleanupFailed`. AssemblyAI rewriting makes one attempt with a five-second deadline before the same raw fallback. This is deliberate data preservation, not proof that cleanup succeeded. Inspect the History entry's raw/cleaned text and error, confirm the target category, and check the selected provider's configuration. Rewrite requests must remain dictated text: they are not instructions for the app to answer or execute.
 
 ## Text is not inserted
 
@@ -79,7 +92,7 @@ Keep the original target field available until processing completes. FlowLocal r
 - Do not close, recreate, navigate away from, or elevate the target during transcription/cleanup.
 - Password fields, read-only controls, stale/mismatched focused elements, and higher/unknown-integrity targets are blocked.
 - If automatic methods are unsafe or fail, the overlay/history may report clipboard-only fallback. Paste manually with Ctrl+V; FlowLocal must not claim that fallback inserted text.
-- Terminal text is inserted but Enter is never sent; commands remain unexecuted.
+- Terminal text is pasted without sending Enter. Text containing control characters (including newlines) is copied for review instead of pasted, including raw fallback; manually review it before any paste that could submit a command.
 - Review History for the insertion method and error. Use **Retry insertion** only after selecting a new safe target.
 
 ## History, recordings, and recovery

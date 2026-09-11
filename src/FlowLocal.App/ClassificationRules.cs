@@ -22,6 +22,8 @@ internal static class ClassificationRules
         ("copilot.microsoft.com", OutputContextCategory.AiChat),
         ("slack.com", OutputContextCategory.WorkMessaging),
         ("chat.google.com", OutputContextCategory.WorkMessaging),
+        ("teams.microsoft.com", OutputContextCategory.WorkMessaging),
+        ("teams.cloud.microsoft", OutputContextCategory.WorkMessaging),
         ("mattermost.com", OutputContextCategory.WorkMessaging),
         ("whatsapp.com", OutputContextCategory.PersonalMessaging),
         ("telegram.org", OutputContextCategory.PersonalMessaging),
@@ -80,8 +82,8 @@ internal static class ClassificationRules
 
         return controlType.Trim().ToLowerInvariant() switch
         {
-            "document" => OutputContextCategory.Document,
-            "edit" or "textbox" or "text box" => OutputContextCategory.General,
+            "document" or "50030" => OutputContextCategory.Document,
+            "edit" or "textbox" or "text box" or "50004" => OutputContextCategory.General,
             _ => null
         };
     }

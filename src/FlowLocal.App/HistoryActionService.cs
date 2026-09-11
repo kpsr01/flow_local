@@ -12,6 +12,8 @@ public sealed class HistoryActionService(
     IActiveTargetTracker targets,
     ITextInsertionService insertion)
 {
+    public IReadOnlyList<string> Vocabulary { get; set; } = [];
+
     public async Task ExecuteAsync(HistoryAction action, HistoryEntry entry, CancellationToken cancellationToken = default)
     {
         switch (action)
@@ -34,12 +36,24 @@ public sealed class HistoryActionService(
     {
         var path = Require(entry.AudioFilePath, "This session has no saved audio.");
         var started = Stopwatch.GetTimestamp();
-        var result = await AsrRetryService.RetryAsync(asr, path, new AsrSessionOptions(entry.Id), cancellationToken);
+        var application = ApplicationNameCatalog.Normalize(entry.TargetExecutable);
+        var context = new ApplicationContext(application.ExecutableName, application.DisplayName, "", null,
+            application.Browser is not null, application.Browser, entry.Domain,
+            new ContextDetectionDiagnostic(ContextDetectionConfidence.Low, "SavedHistory"));
+        var result = await AsrRetryService.RetryAsync(asr, path, new AsrSessionOptions(entry.Id,
+            RecognitionPrompt: AssemblyAIPrompts.Recognition(context, entry.OutputCategory ?? OutputContextCategory.General),
+            Keyterms: AssemblyAIPrompts.Keyterms(Vocabulary, context)), cancellationToken);
         var raw = Require(result.Text, "Speech recognition returned an empty transcript.");
         await history.UpdateAsync(entry with
         {
             RawTranscript = raw,
             CleanedTranscript = null,
+            AsrModelName = asr switch
+            {
+                AssemblyAIAsrService => AssemblyAIAsrService.ModelName,
+                CanaryAsrService => CanaryAsrService.ModelName,
+                _ => entry.AsrModelName
+            },
             AsrDuration = Stopwatch.GetElapsedTime(started),
             CleanupDuration = null,
             InsertionDuration = null,
@@ -53,21 +67,21 @@ public sealed class HistoryActionService(
 
     public async Task RetryCleanupAsync(HistoryEntry entry, CancellationToken cancellationToken = default)
     {
-        var raw = new RawTranscript(Require(entry.RawTranscript, "This session has no raw transcript."));
+        var raw = new RawTranscript(Require(entry.RawTranscript, "This session has no raw transcript."), entry.OutputCategory);
         var started = Stopwatch.GetTimestamp();
-        var cleaned = await cleaner.CleanAsync(raw, entry.Style ?? TranscriptStyleResolver.Resolve(entry.OutputCategory ?? OutputContextCategory.General), cancellationToken);
-        if (!CleanupResultValidator.TryValidate(raw, cleaned, out var reason))
-            throw new InvalidOperationException(reason);
+        var (cleaned, usedFallback) = await DictationController.CleanWithFallbackStatusAsync(
+            cleaner, raw, entry.Style ?? TranscriptStyleResolver.Resolve(entry.OutputCategory ?? OutputContextCategory.General), cancellationToken);
         await history.UpdateAsync(entry with
         {
             CleanedTranscript = cleaned.Text,
+            CleanupModelName = (cleaner as ICleanupBackend)?.DisplayName ?? entry.CleanupModelName,
             CleanupDuration = Stopwatch.GetElapsedTime(started),
             InsertionDuration = null,
             TotalDuration = null,
             InsertionMethod = null,
             RetryCount = entry.RetryCount + 1,
             State = RecordingState.Inserting,
-            ErrorCode = DictationErrorCode.None
+            ErrorCode = usedFallback ? DictationErrorCode.CleanupFailed : DictationErrorCode.None
         }, cancellationToken);
     }
 

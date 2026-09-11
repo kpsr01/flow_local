@@ -17,6 +17,7 @@ public static class ApplicationNameCatalog
             ["notepad"] = ("Notepad", null),
             ["slack"] = ("Slack", null),
             ["teams"] = ("Microsoft Teams", null),
+            ["ms-teams"] = ("Microsoft Teams", null),
             ["discord"] = ("Discord", null),
             ["whatsapp"] = ("WhatsApp", null),
             ["telegram"] = ("Telegram", null),

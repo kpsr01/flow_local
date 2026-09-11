@@ -1,10 +1,12 @@
 namespace FlowLocal.Core;
 
-public sealed record AsrSessionOptions(Guid SessionId, int SampleRate = 16_000, int BitsPerSample = 16, int Channels = 1);
+public sealed record AsrSessionOptions(
+    Guid SessionId, int SampleRate = 16_000, int BitsPerSample = 16, int Channels = 1,
+    string? RecognitionPrompt = null, IReadOnlyList<string>? Keyterms = null);
 
 public sealed record AsrResult(string Text);
 
-public sealed record RawTranscript(string Text);
+public sealed record RawTranscript(string Text, OutputContextCategory? Category = null);
 
 public sealed record TranscriptStyle(
     string Category,
@@ -63,7 +65,7 @@ public sealed record StyleOverrideLoadResult(
     OutputStyleSettings Settings,
     string? Diagnostic = null);
 
-public sealed record CleanTranscriptResult(string Text);
+public sealed record CleanTranscriptResult(string Text, bool UsedFallback = false);
 
 public sealed record BackendAvailability(bool IsAvailable, string? UnavailableReason = null);
 

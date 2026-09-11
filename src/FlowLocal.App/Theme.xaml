@@ -72,6 +72,16 @@
         <Setter Property="TextWrapping" Value="Wrap" />
     </Style>
 
+    <Style x:Key="SettingsFocusVisual" TargetType="Control">
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Control">
+                    <Border BorderBrush="{StaticResource BrushEmber}" BorderThickness="2" CornerRadius="6" Margin="-2" />
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- Buttons -->
     <Style TargetType="Button">
         <Setter Property="FontFamily" Value="{StaticResource FontBody}" />

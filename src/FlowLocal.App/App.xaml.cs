@@ -19,8 +19,8 @@ public partial class App : Application
     private GlobalShortcutService? _shortcut;
     private WasapiAudioCaptureService? _audio;
     private DictationController? _dictation;
-    private CanaryAsrService? _asr;
-    private SottoTranscriptCleaner? _cleaner;
+    private IAsrService? _asr;
+    private ITranscriptCleaner? _cleaner;
     private SqliteHistoryRepository? _history;
     private AppSettingsStore? _appSettings;
     private HistoryActionService? _historyActions;
@@ -33,7 +33,7 @@ public partial class App : Application
     [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
     private static extern void SetCurrentProcessExplicitAppUserModelID(string appId);
 
-    protected override void OnStartup(StartupEventArgs e)
+    protected override async void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
         // Match the Start-menu shortcut so Windows groups the running app under the packaged identity.
@@ -76,10 +76,37 @@ public partial class App : Application
         _audio = new WasapiAudioCaptureService();
         _audio.LevelChanged += OnAudioLevelChanged;
         _audio.FellBackToDefaultDevice += OnMicrophoneFallback;
-        _asr = new CanaryAsrService();
-        _cleaner = new SottoTranscriptCleaner();
-        _history = new SqliteHistoryRepository();
+        var menu = new Forms.ContextMenuStrip { AccessibleName = "FlowLocal tray menu" };
+        menu.Items.Add("&Settings", null, (_, _) => ShowSettings()).AccessibleName = "Open FlowLocal settings";
+        menu.Items.Add("Check for &updates", null, OnCheckForUpdates).AccessibleName = "Check online for FlowLocal updates";
+        menu.Items.Add("&History", null, (_, _) => ShowHistory()).AccessibleName = "Open dictation history";
+        menu.Items.Add("E&xit", null, (_, _) => ExitApplication()).AccessibleName = "Exit FlowLocal";
+        _notifyIcon = new Forms.NotifyIcon
+        {
+            Icon = FlowIcon.CreateTrayIcon(),
+            Text = "FlowLocal dictation",
+            ContextMenuStrip = menu,
+            Visible = true
+        };
+        _notifyIcon.DoubleClick += (_, _) => ShowSettings();
         _appSettings = new AppSettingsStore();
+        var savedSettings = await _appSettings.LoadAsync();
+        _settingsWindow.ConfigureProviderSettings(_appSettings, savedSettings);
+        var asrProvider = savedSettings.EffectiveAsrProvider;
+        var rewriteProvider = savedSettings.EffectiveRewriteProvider;
+        if (asrProvider is not ("local" or "assemblyai") || rewriteProvider is not ("sotto" or "assemblyai"))
+        {
+            _overlayWindow.ShowFailure("Invalid provider. Choose speech and rewrite providers in Settings > Models and diagnostics, save, then restart.");
+            ShowSettings();
+            _settingsWindow.Navigate("diagnostics");
+            return;
+        }
+        var apiKey = AppSettingsStore.GetAssemblyAIApiKey(savedSettings);
+        _asr = asrProvider == "assemblyai" ? new AssemblyAIAsrService(apiKey) : new CanaryAsrService();
+        _cleaner = rewriteProvider == "assemblyai"
+            ? new AssemblyAITranscriptCleaner(apiKey, Environment.GetEnvironmentVariable("FLOWLOCAL_ASSEMBLYAI_LLM_MODEL"))
+            : new SottoTranscriptCleaner();
+        _history = new SqliteHistoryRepository();
         var targets = new ActiveTargetTracker();
         var contextDetector = new ApplicationContextDetector(new BrowserContextDetector());
         var styleClassifier = new OutputStyleClassifier();
@@ -87,9 +114,9 @@ public partial class App : Application
         var insertion = new ClipboardTextInsertionService();
         _dictation = new DictationController(
             new RecordingStateMachine(), targets, contextDetector, styleClassifier, styleOverrides,
-            _audio, _asr, _cleaner, _cleaner, insertion, _overlayWindow,
+            _audio, _asr, _cleaner, (ICleanupBackend)_cleaner, insertion, _overlayWindow,
             NullLogger<DictationController>.Instance, _history,
-            asrModelName: CanaryAsrService.ModelName);
+            asrModelName: _asr is AssemblyAIAsrService ? AssemblyAIAsrService.ModelName : CanaryAsrService.ModelName);
         var historyActions = new HistoryActionService(_history, _asr, _cleaner, targets, insertion);
         _historyActions = historyActions;
         ApplicationContext? diagnosticContext = null;
@@ -112,19 +139,6 @@ public partial class App : Application
         _shortcut.Released += OnShortcutReleased;
         _shortcut.Cancelled += OnShortcutCancelled;
 
-        var menu = new Forms.ContextMenuStrip { AccessibleName = "FlowLocal tray menu" };
-        menu.Items.Add("&Settings", null, (_, _) => ShowSettings()).AccessibleName = "Open FlowLocal settings";
-        menu.Items.Add("Check for &updates", null, OnCheckForUpdates).AccessibleName = "Check online for FlowLocal updates";
-        menu.Items.Add("&History", null, (_, _) => ShowHistory()).AccessibleName = "Open dictation history";
-        menu.Items.Add("E&xit", null, (_, _) => ExitApplication()).AccessibleName = "Exit FlowLocal";
-        _notifyIcon = new Forms.NotifyIcon
-        {
-            Icon = FlowIcon.CreateTrayIcon(),
-            Text = "FlowLocal dictation",
-            ContextMenuStrip = menu,
-            Visible = true
-        };
-        _notifyIcon.DoubleClick += (_, _) => ShowSettings();
         _ = RunQuietUpdateCheckAsync();
         _ = InitializeAsync(historyActions);
         if (showMainWindow) ShowSettings();
@@ -142,7 +156,7 @@ public partial class App : Application
             if (_appSettings is not null && _shortcut is not null && _audio is not null && _asr is not null && _cleaner is not null)
             {
                 await _settingsWindow.ConfigureRuntimeAsync(
-                    _appSettings, _shortcut, _audio, _asr, _cleaner, ApplyAppSettings);
+                    _appSettings, _shortcut, _audio, _asr, (ICleanupBackend)_cleaner, ApplyAppSettings);
                 var settings = await _appSettings.LoadAsync();
                 ApplyAppSettings(settings);
             }
@@ -163,6 +177,7 @@ public partial class App : Application
             }
             await _dictation.InitializeAsync();
             _dictationReady = true;
+            _settingsWindow.RefreshRuntimeDiagnostics();
             // Wispr-style persistent idle pill: collapses to a tiny mic glyph instead of hiding.
             _overlayWindow.ShowReady();
         }
@@ -175,6 +190,10 @@ public partial class App : Application
 
     private void ApplyAppSettings(AppSettings settings)
     {
+        var vocabulary = AssemblyAIPrompts.Keyterms(
+            (settings.Vocabulary ?? []).Concat(settings.RememberedCorrections?.Values ?? Enumerable.Empty<string>()));
+        if (_dictation is not null) _dictation.Vocabulary = vocabulary;
+        if (_historyActions is not null) _historyActions.Vocabulary = vocabulary;
         _shortcut?.Configure(settings.ShortcutModifiers ?? AppSettings.DefaultShortcutModifiers);
         if (_dictation is not null)
         {
@@ -478,8 +497,9 @@ public partial class App : Application
             _audio.FellBackToDefaultDevice -= OnMicrophoneFallback;
         }
         _audio?.Dispose();
-        _cleaner?.Dispose();
-        if (_asr is not null) await _asr.DisposeAsync();
+        (_cleaner as IDisposable)?.Dispose();
+        if (_asr is IAsyncDisposable asyncAsr) await asyncAsr.DisposeAsync();
+        else (_asr as IDisposable)?.Dispose();
         _activationSignal?.Dispose();
         _singleInstance?.Dispose();
         base.OnExit(e);

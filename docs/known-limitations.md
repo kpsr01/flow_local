@@ -8,9 +8,9 @@ This list describes the current implementation rather than the broader project s
 - Real-world compatibility and performance are not yet certified. The [manual compatibility checklist](manual-compatibility.md) and [performance procedure](performance-measurements.md) remain `UNVERIFIED`.
 - Safe insertion is limited to same-user, same-integrity desktop targets. Password fields and protected, elevated, unknown-integrity, stale, or mismatched targets are rejected.
 
-## Models and language
+## Local models and language
 
-- ASR is English-only and hard-coded to Canary 180M Flash (Q4_K_M GGUF from `handy-computer/canary-180m-flash-gguf`, run through transcribe.cpp).
+- The default local ASR is English-only Canary 180M Flash (Q4_K_M GGUF from `handy-computer/canary-180m-flash-gguf`, run through transcribe.cpp). Cloud ASR is separately selectable.
 - All Canary GGUF inference runs inside the `FlowLocal.AsrWorker.exe` companion process. A stalled or natively-crashing model runtime is contained there; the worker is killed and transparently respawned for the next dictation, and a wedged session degrades into a typed ASR failure with saved audio for retry.
 - Inference is pinned to the CPU backend (exact request, no device fallback); no GPU selection or tuning exists.
 - The worker buffers session audio in memory and transcribes once at release; very long sessions are bounded by the model's ~400-second input limit and the completion timeout rather than an explicit duration limit.
@@ -20,6 +20,18 @@ This list describes the current implementation rather than the broader project s
 - The prompt adapter sends Sotto's exact training format — a plain `### Input:` / `### Output:` completion block with no chat template and no system prompt — since the base-model fine-tune was trained on that single fixed layout. The model covers English only. App-level output-style selection remains in the UI but is not forwarded to the cleanup model; any formatting in its output emerges from the model itself rather than being forced.
 - Greedy decoding uses the model card's `repetition_penalty=1.05`. Rare n-gram loops remain possible on pathological verbatim-repetition inputs; the card's own guidance treats this penalty setting as the production default and `CleanupResultValidator` plus the raw-transcript fallback bound the damage.
 - Cleanup retries once and then falls back to the raw transcript. A fallback session is marked `CleanupFailed`; unchanged text is not a cleanup-success claim.
+
+## AssemblyAI cloud providers
+
+- Cloud ASR uses Sync STT `universal-3-5-pro`, not the async transcription API. The app requests English and accepts clips from 80 ms to 120 seconds at 16 kHz, 16-bit mono. Longer clips fail; they are not silently chunked or truncated.
+- Both providers require a valid API key and network access. AssemblyAI usage is billable; authorization, quota/rate-limit, and service failures can occur. No key is bundled. Settings can save a masked key using Windows user-level encryption; key/provider changes require a restart, and a copied credential may need re-entry on another Windows account or machine.
+- The Gateway defaults to `qwen3.5-4b-32k-fast`; model access can vary by account. Rewrites have a five-second deadline and no automatic retry. Failure, timeout, or rejected output preserves the exact raw transcript.
+- Context is best-effort: process, captured title, focused-control type, and normalized browser domain. Browser address-bar lookup waits at most 250 ms before trying conservative captured-title hints. There is no selected-text, nearby-content, page, or project indexing.
+- Category overrides choose the fixed cloud rewrite profile. Arbitrary style text is not injected into the system prompt. Prompts prohibit answering/acting and invented details, but model formatting and exact meaning preservation need real-recording evaluation; validation cannot prove semantic equivalence.
+- Live synthetic-speech checks found that terminal recognition can add a sentence-ending period (`git status` → `git status.`), which the fast Gateway model may retain. Prompt experiments that removed it also risked changing quoted literals, so they were not retained. Review terminal text before pressing Enter; neither recognition nor rewriting is a command-syntax guarantee. Raw fallback intentionally preserves recognition text, including its mistakes.
+- Vocabulary/correction hints are manually configured, not learned automatically. Empty, duplicate, control-character-containing, or overlong hints are ignored and the total is bounded to 2,048 characters.
+- Live STT/LLM quality and post-release latency require a configured key and representative recordings. Synthetic protocol/fallback checks and connection warming do not establish those results.
+- Local history deletion/retention does not delete cloud-side audio or transcripts; consult the AssemblyAI account/provider policy before sending sensitive material.
 
 ## Microphone and shortcut
 

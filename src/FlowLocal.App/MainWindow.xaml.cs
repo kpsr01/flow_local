@@ -41,8 +41,8 @@ public partial class MainWindow : Window
         new("shortcuts", "Shortcuts", "Choose the modifiers that activate push-to-talk.", "\uE765"),
         new("microphone", "Microphone", "Follow the Windows default input or pin a device.", "\uE720"),
         new("styles", "Application styles", "Detect the current target and shape its writing style.", "\uE790"),
-        new("privacy", "History and privacy", "Everything stays on this machine until you delete it.", "\uE81C"),
-        new("diagnostics", "Models and diagnostics", "Live status of the local speech stack.", "\uE9D9")
+        new("privacy", "History and privacy", "Local history and retention; cloud providers upload audio or transcripts when enabled.", "\uE81C"),
+        new("diagnostics", "Models and diagnostics", "Live status of the selected speech and rewrite providers.", "\uE9D9")
     ];
 
     private IStyleOverrideStore? _store;
@@ -58,8 +58,8 @@ public partial class MainWindow : Window
     private AppSettingsStore? _appSettings;
     private GlobalShortcutService? _shortcut;
     private WasapiAudioCaptureService? _audio;
-    private CanaryAsrService? _asr;
-    private SottoTranscriptCleaner? _cleaner;
+    private IAsrService? _asr;
+    private ICleanupBackend? _cleaner;
     private Action<AppSettings>? _applyAppSettings;
     private IReadOnlyList<MicrophoneDeviceInfo> _microphones = [];
 
@@ -134,12 +134,54 @@ public partial class MainWindow : Window
         }, cancellationToken);
     }
 
+    internal void ConfigureProviderSettings(AppSettingsStore store, AppSettings settings)
+    {
+        _appSettings = store;
+        AsrProviderComboBox.SelectedIndex = settings.EffectiveAsrProvider == "assemblyai" ? 1 : 0;
+        RewriteProviderComboBox.SelectedIndex = settings.EffectiveRewriteProvider == "assemblyai" ? 1 : 0;
+        var key = AppSettingsStore.GetAssemblyAIApiKey(settings);
+        AssemblyAIKeyPasswordBox.Password = key ?? "";
+        ProviderSettingsStatusText.Text = !string.IsNullOrEmpty(settings.EncryptedAssemblyAIApiKey)
+            ? (!string.IsNullOrEmpty(key)
+                ? "API key saved for this Windows account."
+                : "The saved key could not be decrypted. Enter it again for this Windows account.")
+            : !string.IsNullOrEmpty(key)
+                ? "Using an environment key. Save to keep it in the app."
+                : "No API key saved.";
+        SaveProvidersButton.IsEnabled = true;
+    }
+
+    private async void SaveProviders_Click(object sender, RoutedEventArgs e)
+    {
+        if (_appSettings is null) return;
+        SaveProvidersButton.IsEnabled = false;
+        try
+        {
+            var settings = await _appSettings.LoadAsync();
+            settings = settings with
+            {
+                EncryptedAssemblyAIApiKey = AppSettingsStore.ProtectAssemblyAIApiKey(AssemblyAIKeyPasswordBox.Password),
+                AsrProvider = (AsrProviderComboBox.SelectedItem as ComboBoxItem)?.Tag as string,
+                RewriteProvider = (RewriteProviderComboBox.SelectedItem as ComboBoxItem)?.Tag as string
+            };
+            await _appSettings.SaveAsync(settings);
+            ProviderSettingsStatusText.Text = settings.EncryptedAssemblyAIApiKey is null
+                ? "Saved without a key. Cloud providers require a key here or in the environment. Restart FlowLocal to apply."
+                : "Key and providers saved. Exit FlowLocal from the tray, then reopen it to apply.";
+        }
+        catch (Exception exception)
+        {
+            ProviderSettingsStatusText.Text = $"Provider settings could not be saved: {exception.Message}";
+        }
+        finally { SaveProvidersButton.IsEnabled = true; }
+    }
+
     public async Task ConfigureRuntimeAsync(
         AppSettingsStore appSettings,
         GlobalShortcutService shortcut,
         WasapiAudioCaptureService audio,
-        CanaryAsrService asr,
-        SottoTranscriptCleaner cleaner,
+        IAsrService asr,
+        ICleanupBackend cleaner,
         Action<AppSettings> applyAppSettings)
     {
         _appSettings = appSettings ?? throw new ArgumentNullException(nameof(appSettings));
@@ -270,6 +312,15 @@ public partial class MainWindow : Window
         if (_appSettings is null) return;
         try
         {
+            var existing = await _appSettings.LoadAsync();
+            settings = existing with
+            {
+                HandsFreeEnabled = settings.HandsFreeEnabled,
+                DoubleTapIntervalMilliseconds = settings.DoubleTapIntervalMilliseconds,
+                ShortcutModifiers = settings.ShortcutModifiers,
+                FollowDefaultMicrophone = settings.FollowDefaultMicrophone,
+                PreferredMicrophoneDeviceId = settings.PreferredMicrophoneDeviceId
+            };
             await _appSettings.SaveAsync(settings);
             _applyAppSettings?.Invoke(_appSettings.NormalizeForApply(settings));
             RefreshRuntimeDiagnostics();
@@ -303,14 +354,26 @@ public partial class MainWindow : Window
     {        VersionText.Text = (Assembly.GetEntryAssembly()?.GetCustomAttribute<AssemblyInformationalVersionAttribute>()
                 ?.InformationalVersion ?? Assembly.GetEntryAssembly()?.GetName().Version?.ToString()) ?? "—";
         RuntimeText.Text = $".NET {Environment.Version} — {Environment.OSVersion.VersionString}";
-        AsrModelText.Text = $"{CanaryAsrService.ModelName} (Canary GGUF · transcribe.cpp CPU)";
-        var status = _asr?.Status;
+        AsrModelText.Text = _asr is AssemblyAIAsrService
+            ? $"{AssemblyAIAsrService.ModelName} (AssemblyAI Sync STT · cloud)"
+            : $"{CanaryAsrService.ModelName} (Canary GGUF · transcribe.cpp CPU)";
+        var status = _asr switch
+        {
+            AssemblyAIAsrService assembly => assembly.Status,
+            CanaryAsrService local => local.Status,
+            _ => null
+        };
         AsrStateText.Text = status is null ? "—"
-            : status.Provider is { Length: > 0 } provider ? $"{status.State} — {provider}" : status.State.ToString();
-        CleanupBackendText.Text = _cleaner is null ? "—" :
-            $"{_cleaner.DisplayName}{(_cleaner.IsLoaded ? $" — {_cleaner.ExecutionTarget}" : " — not loaded yet")}";
-        CleanupPathText.Text = SottoTranscriptCleaner.ConfiguredModelPath
-            ?? "Set FLOWLOCAL_CLEANUP_MODEL_PATH to a local GGUF file.";
+            : status.FailureMessage ?? (status.Provider is { Length: > 0 } provider ? $"{status.State} — {provider}" : status.State.ToString());
+        CleanupBackendText.Text = _cleaner?.DisplayName ?? "—";
+        if (_cleaner is SottoTranscriptCleaner sotto)
+            CleanupBackendText.Text += sotto.IsLoaded ? $" — {sotto.ExecutionTarget}" : " — not loaded yet";
+        CleanupPathText.Text = _cleaner is AssemblyAITranscriptCleaner
+            ? "Cloud rewrite; five-second timeout with raw transcript fallback."
+            : SottoTranscriptCleaner.ConfiguredModelPath ?? "Set FLOWLOCAL_CLEANUP_MODEL_PATH to a local GGUF file.";
+        ProviderPrivacyText.Text = _asr is AssemblyAIAsrService || _cleaner is AssemblyAITranscriptCleaner
+            ? "AssemblyAI cloud processing is enabled. Sync STT uploads audio and recognition context; LLM Gateway uploads transcripts. Local history retention does not delete cloud data."
+            : "Local speech recognition and Sotto cleanup. Audio and transcripts stay on this machine.";
         if (_audio is not null && FollowDefaultMicCheckBox is not null)
         {
             MicModeText.Text = FollowDefaultMicCheckBox.IsChecked == true

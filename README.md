@@ -1,33 +1,26 @@
 # FlowLocal
 
-FlowLocal is a Windows 11 x64 WPF dictation application. Hold the global shortcut, speak into the Windows default recording device, and release to run English speech recognition locally, clean the transcript with a local Sotto cleanup GGUF model, classify the active target, and insert the result. The application is still awaiting the documented manual compatibility and performance runs; see [Known limitations](docs/known-limitations.md).
+FlowLocal is a Windows 11 x64 WPF dictation application. Hold the global shortcut, speak into the Windows default recording device, and release to run English speech recognition locally, clean the transcript with a resident local LFM2.5 cleanup server, classify the active target, and insert the result. The application is still awaiting the documented manual compatibility and performance runs; see [Known limitations](docs/known-limitations.md).
 
 ## System requirements
 
 - Windows 11 x64. The projects target `net9.0-windows10.0.26100.0`; Windows 10 is not a supported target.
 - .NET 9 SDK to build or run from source. A self-contained packaged build does not require a separately installed .NET runtime.
 - A working Windows recording device and microphone permission for desktop applications.
-- Disk space and memory for the app, the Canary 180M Flash GGUF (~133 MB in `%LOCALAPPDATA%\FlowLocal\Models\canary-180m-flash-gguf`), and the Sotto cleanup GGUF (~229 MB).
-- Internet access for initial NuGet restore and the first speech-model download. Dictation inference is local after those assets are installed.
+- Disk space and memory for the app, Nemotron Speech Streaming EN 0.6B Q4_K_M (~475 MB), LFM2.5-1.2B QAD Q4_0 (~696 MB), and the optional DSpark Q4_K_M draft (~176 MB).
+- Internet access for initial NuGet restore, model downloads, and the packaged llama.cpp runtime. Dictation inference is local after those assets are installed.
 
 ## Speech model
 
-ASR runs [Canary 180M Flash](https://huggingface.co/handy-computer/canary-180m-flash-gguf) (Q4_K_M GGUF) through [transcribe.cpp](https://github.com/handy-computer/transcribe.cpp) (CPU backend) inside the `FlowLocal.AsrWorker.exe` companion process. The worker loads `canary-180m-flash-Q4_K_M.gguf` from `%LOCALAPPDATA%\FlowLocal\Models\canary-180m-flash-gguf`, keeps the model warm between dictations, and decodes greedily with punctuation/capitalization, timestamps, and translation disabled — raw lowercase text is passed to Sotto for cleanup. The installer downloads the file; when running from source, the worker downloads it from Hugging Face at first init, so the first launch may need network access.
+ASR runs [Nemotron Speech Streaming EN 0.6B](https://huggingface.co/handy-computer/nemotron-speech-streaming-en-0.6b-gguf) (Q4_K_M GGUF) through [transcribe.cpp](https://github.com/handy-computer/transcribe.cpp) 0.2.3 (CPU backend) inside the `FlowLocal.AsrWorker.exe` companion process. The worker keeps the model and streaming session loaded between dictations, feeds 16 kHz mono float PCM while recording, and finalizes with an approximately 80 ms right-context lookahead. The installer downloads `nemotron-speech-streaming-en-0.6b-Q4_K_M.gguf`; when running from source, the worker downloads it from Hugging Face at first init.
 
 ## Cleanup model installation
 
-The cleanup stage uses [sotto-cleanup-lfm25-350m](https://huggingface.co/juanquivilla/sotto-cleanup-lfm25-350m) (a full fine-tune of `LiquidAI/LFM2.5-350M-Base`) loaded by LLamaSharp's CPU backend from a Q4_K_M GGUF converted from the repo's BF16 checkpoint with llama.cpp (`convert_hf_to_gguf.py --outtype bf16`, then `llama-quantize Q4_K_M`; the upstream repo publishes no GGUF, so the file must be built or obtained from your own mirror). A normal install places `sotto-cleanup-lfm25-350m-q4_k_m.gguf` into `%LOCALAPPDATA%\FlowLocal\Models` during setup (removing retired cleanup GGUFs); no environment variable is required.
+The cleanup stage uses Liquid AI's [LFM2.5-1.2B-Instruct-GGUF](https://huggingface.co/LiquidAI/LFM2.5-1.2B-Instruct-GGUF), specifically `LFM2.5-1.2B-Instruct-QAD-Q4_0.gguf`, served by the packaged [llama.cpp](https://github.com/ggml-org/llama.cpp) runtime. The installer also downloads `LFM2.5-1.2B-Instruct-DSpark-Q4_K_M.gguf`, an optional speculative-decoding draft model enabled with `FLOWLOCAL_CLEANUP_DSPARK=1`.
 
-When running from source without the installer, either place `sotto-cleanup-lfm25-350m-q4_k_m.gguf` into `%LOCALAPPDATA%\FlowLocal\Models` or point at one explicit file:
+When running from source, the target model is discovered at `%LOCALAPPDATA%\FlowLocal\Models\LFM2.5-1.2B-Instruct-QAD-Q4_0.gguf` or supplied with `FLOWLOCAL_CLEANUP_MODEL_PATH`. The DSpark sidecar can be supplied with `FLOWLOCAL_CLEANUP_DSPARK_MODEL_PATH`; the server executable can be overridden with `FLOWLOCAL_LLAMA_SERVER_PATH`.
 
-```powershell
-[Environment]::SetEnvironmentVariable(
-  "FLOWLOCAL_CLEANUP_MODEL_PATH",
-  "C:\Models\sotto-cleanup-lfm25-350m-q4_k_m.gguf",
-  "User")
-```
-
-Restart the shell or Explorer-launched application after changing the user environment variable. There is no in-app model picker. The app sends every transcript through Sotto's exact training format — a plain `### Input:` / `### Output:` completion block with no chat template and no system prompt — decodes greedily at temperature 0 with the model card's recommended `repetition_penalty=1.05` and `max_new_tokens = max(900, 1.5 x input_words)` capped at the next `###` marker, and keeps the model loaded between requests on an 8192-token context; set `FLOWLOCAL_CLEANUP_GPU=1` to experiment with full GPU offload (it falls back to CPU automatically).
+The app starts one resident `llama-server.exe` process, uses a deterministic LFM chat prompt, temperature 0, top-k 1, top-p 1, repetition penalty 1.05, a 2048-token context, and streams completion tokens. It records prefill, time-to-first-token, decode, completion, resident-memory, and DSpark draft/accepted-token metrics. The packaged server is CPU-only; `FLOWLOCAL_CLEANUP_DSPARK=1` enables `draft-dspark` speculative decoding.
 
 ## Build instructions
 
@@ -84,13 +77,13 @@ FlowLocal starts in the notification area. Right-click its tray icon for **Setti
 
 ## First-run setup
 
-1. Install FlowLocal normally (the installer places the Canary speech model and the cleanup GGUF), or run once from source with network access so the worker can fetch the speech model into `%LOCALAPPDATA%\FlowLocal\Models\canary-180m-flash-gguf`, and place `sotto-cleanup-lfm25-350m-q4_k_m.gguf` in `%LOCALAPPDATA%\FlowLocal\Models` or set `FLOWLOCAL_CLEANUP_MODEL_PATH` as shown above.
+1. Install FlowLocal normally (the installer places the Nemotron, QAD, DSpark, and llama.cpp runtime assets), or run from source after downloading those assets into `%LOCALAPPDATA%\FlowLocal\Models` and `%LOCALAPPDATA%\FlowLocal\Runtimes\llama`.
 2. In Windows, select and test the intended default input device and allow desktop-app microphone access.
-3. Start FlowLocal and wait for the initialization overlay to disappear. The worker may download and warm up the Canary model on this first run; the cleanup model is then loaded from its discovered or configured file.
+3. Start FlowLocal and wait for the initialization overlay to disappear. The worker and resident cleanup server warm up on first launch.
 4. Open **Settings**, review Application styles and History/privacy defaults, then use **Test current target** while the intended target is active.
 5. Focus a writable text field, hold Ctrl+Windows while speaking, and release either key to transcribe, clean, and insert. Press Escape while held to cancel.
 
-Initialization errors remain visible in the overlay. There is no in-app model installer or retry button; correct the prerequisite or path and restart the app.
+Initialization errors remain visible in the overlay. Set `FLOWLOCAL_CLEANUP_DSPARK=1` before launch to benchmark or use the DSpark cleanup path.
 
 ## Microphone setup
 
@@ -129,8 +122,8 @@ All mutable data is under `%LOCALAPPDATA%\FlowLocal`:
 | Path | Contents |
 | --- | --- |
 | `%LOCALAPPDATA%\FlowLocal\flowlocal.db` | SQLite history, transcript, target/style metadata, timings, errors, and retention settings |
-| `%LOCALAPPDATA%\FlowLocal\Models\*.gguf` | Cleanup model files (downloaded here by the installer) |
-| `%LOCALAPPDATA%\FlowLocal\Models\canary-180m-flash-gguf\` | Canary 180M Flash Q4_K_M GGUF (downloaded here by the installer or the worker) |
+| `%LOCALAPPDATA%\FlowLocal\Models\*.gguf` | Nemotron ASR, LFM2.5 QAD cleanup, and optional DSpark model files |
+| `%LOCALAPPDATA%\FlowLocal\Runtimes\llama\` | llama.cpp runtime when running from source; packaged builds include it beside the app |
 | `%LOCALAPPDATA%\FlowLocal\Recordings\<session-id>.wav` | Recoverable/session audio and retained recordings |
 | `%LOCALAPPDATA%\FlowLocal\application-styles.json` | Application/domain classification overrides and classification switches |
 

@@ -5,15 +5,22 @@ using FlowLocal.Core;
 
 namespace FlowLocal.App;
 
+public sealed record AsrStreamingMetrics(
+    double FinalizeMilliseconds,
+    double ProcessingMilliseconds,
+    double AudioMilliseconds,
+    int PartialCount,
+    double? FirstPartialAudioMilliseconds);
+internal sealed record AsrCompletion(string? Text, AsrStreamingMetrics? Metrics);
+
 /// <summary>
-/// Thin client for the FlowLocal.AsrWorker companion process. All Canary GGUF
-/// inference (transcribe.cpp, CPU) runs inside the worker so stalls or native
-/// aborts never take the app down; a wedged or crashed worker is killed and
-/// transparently respawned for the next session.
+/// Thin client for the resident Nemotron cache-aware streaming worker.
+/// The worker owns the native model/session so the WPF process remains isolated
+/// from native failures and the model stays loaded between dictations.
 /// </summary>
 public sealed class CanaryAsrService : IAsrService, IDisposable, IAsyncDisposable
 {
-    public const string ModelName = "canary-180m-flash-q4_k_m";
+    public const string ModelName = "nemotron-speech-streaming-en-0.6b-q4_k_m";
 
     private static readonly TimeSpan InitTimeout = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan StartAckTimeout = TimeSpan.FromSeconds(45);
@@ -25,12 +32,13 @@ public sealed class CanaryAsrService : IAsrService, IDisposable, IAsyncDisposabl
     private StreamWriter? _stdin;
     private Task? _reader;
     private TaskCompletionSource<bool>? _ackSource;
-    private TaskCompletionSource<string?>? _finalSource;
+    private TaskCompletionSource<AsrCompletion?>? _finalSource;
     private volatile string? _pendingStreamError;
     private bool _initialized;
     private bool _disposed;
 
     public AsrBackendStatus Status { get; private set; } = new(AsrBackendState.NotInstalled);
+    public AsrStreamingMetrics? LastMetrics { get; private set; }
 
     public async Task InitializeAsync(CancellationToken cancellationToken)
     {
@@ -51,7 +59,7 @@ public sealed class CanaryAsrService : IAsrService, IDisposable, IAsyncDisposabl
         ArgumentNullException.ThrowIfNull(options);
         if (options.SampleRate != 16_000 || options.BitsPerSample != 16 || options.Channels != 1)
         {
-            throw new ArgumentException("Canary ASR requires 16000 Hz, 16-bit, mono PCM audio.", nameof(options));
+            throw new ArgumentException("Nemotron ASR requires 16000 Hz, 16-bit, mono PCM audio.", nameof(options));
         }
 
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -102,20 +110,22 @@ public sealed class CanaryAsrService : IAsrService, IDisposable, IAsyncDisposabl
 
             if (!IsWorkerAlive) throw new InvalidOperationException("The ASR worker is no longer running.");
 
-            var finalSource = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var finalSource = new TaskCompletionSource<AsrCompletion?>(TaskCreationOptions.RunContinuationsAsynchronously);
             _finalSource = finalSource;
             await SendAsync(new { cmd = "complete" }).ConfigureAwait(false);
-            string? text;
+            AsrCompletion? completion;
             try
             {
-                text = await finalSource.Task.WaitAsync(CompleteTimeout, cancellationToken).ConfigureAwait(false);
+                completion = await finalSource.Task.WaitAsync(CompleteTimeout, cancellationToken).ConfigureAwait(false);
             }
             catch (TimeoutException)
             {
                 throw new InvalidOperationException("Speech recognition stalled and was abandoned.");
             }
 
-            return new AsrResult(text ?? throw new InvalidOperationException("No speech was recognized."));
+            if (completion is null) throw new InvalidOperationException("No speech was recognized.");
+            LastMetrics = completion.Metrics;
+            return new AsrResult(completion.Text ?? throw new InvalidOperationException("No speech was recognized."));
         }
         finally
         {
@@ -157,6 +167,7 @@ public sealed class CanaryAsrService : IAsrService, IDisposable, IAsyncDisposabl
     private void ResetSessionState()
     {
         _pendingStreamError = null;
+        LastMetrics = null;
         _finalSource = null;
         _ackSource = null;
     }
@@ -275,8 +286,10 @@ public sealed class CanaryAsrService : IAsrService, IDisposable, IAsyncDisposabl
                     break;
 
                 case "final":
-                    Interlocked.Exchange(ref _finalSource, null)?.TrySetResult(
-                        root.TryGetProperty("text", out var textEl) ? textEl.GetString() : null);
+                    var completion = new AsrCompletion(
+                        root.TryGetProperty("text", out var finalText) ? finalText.GetString() : null,
+                        ReadMetrics(root));
+                    Interlocked.Exchange(ref _finalSource, null)?.TrySetResult(completion);
                     break;
 
                 case "error":
@@ -293,6 +306,19 @@ public sealed class CanaryAsrService : IAsrService, IDisposable, IAsyncDisposabl
                     break;
             }
         }
+    }
+
+    private static AsrStreamingMetrics? ReadMetrics(JsonElement root)
+    {
+        if (!root.TryGetProperty("metrics", out var metrics)) return null;
+        return new AsrStreamingMetrics(
+            metrics.GetProperty("finalizeMs").GetDouble(),
+            metrics.GetProperty("processingMs").GetDouble(),
+            metrics.GetProperty("audioMs").GetDouble(),
+            metrics.GetProperty("partialCount").GetInt32(),
+            metrics.TryGetProperty("firstPartialAudioMs", out var first) && first.ValueKind != JsonValueKind.Null
+                ? first.GetDouble()
+                : null);
     }
 
     private void FailPendingWaits(string reason)

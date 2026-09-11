@@ -18,7 +18,7 @@ User focuses a text field
 → speaks naturally, including fillers and self-corrections
 → releases the shortcut
 → local ASR produces the raw transcript
-→ the Mumble cleanup model cleans the transcript
+→ the LFM2.5 cleanup model cleans the transcript
 → the app detects the active application or website
 → the app selects an appropriate output style
 → the cleaned text is inserted into the original text field
@@ -98,13 +98,11 @@ Audio capture must not block the UI thread.
 Use:
 
 ```text
-Model: canary-180m-flash (handy-computer/canary-180m-flash-gguf, Q4_K_M GGUF)
-Runtime: transcribe.cpp 0.2.1 native library (CPU backend) inside FlowLocal.AsrWorker.exe
-Decoding: greedy; punctuation/capitalization off (Sotto restores formatting);
-          timestamps, translation, and language detection disabled
+Model: Nemotron Speech Streaming EN 0.6B (handy-computer/nemotron-speech-streaming-en-0.6b-gguf, Q4_K_M GGUF)
+Runtime: transcribe.cpp 0.2.3 native library (CPU backend) inside FlowLocal.AsrWorker.exe
+Decoding: streaming parakeet session, greedy, punctuation/capitalization off, approximately 80 ms right-context lookahead
 Language: English
 Execution: local CPU only
-```
 
 Implement the ASR backend behind an interface:
 
@@ -119,29 +117,29 @@ public interface IAsrService
 }
 ```
 
-Canary is an offline encoder-decoder model and produces final results per run; the default user experience is final-on-release. Partial results are not inserted into the target application.
+Nemotron uses a resident streaming session; results are finalized on release and partials are not inserted into the target application.
 ### Transcript Cleanup Model
 
 Use:
 
 ```text
-Model: trevornk/mumble-cleanup-2stage-GGUF (upstream: amitashwini/mumble-cleanup-2stage,
-       a LoRA fine-tune of Qwen/Qwen2.5-0.5B-Instruct)
+Model: LiquidAI/LFM2.5-1.2B-Instruct-GGUF, QAD Q4_0 target
+Draft: LiquidAI/LFM2.5-1.2B-Instruct-DSpark-GGUF, Q4_K_M optional draft
 Format: GGUF
-Quantization: Q4_0 (repo recommendation for CPU/on-device latency)
-Runtime: llama.cpp
-C# integration: LLamaSharp or a small managed wrapper around llama.cpp
-Execution: completely local
-```
+Runtime: llama.cpp `llama-server.exe`, resident HTTP/SSE process
+C# integration: small managed HTTP adapter around llama.cpp
+Execution: completely local CPU
 
 Inference configuration:
 
 ```text
-Temperature: 0
-Sampling: greedy or deterministic
-Chat template: plain Qwen2.5 template — no control line, no think block
+Temperature: 0; top-k 1; top-p 1; repetition penalty 1.05
+Context: 2048 tokens; reasoning budget 0; one resident slot
+Prompt: compact LFM chat template with technical-token preservation instruction
+Optional: draft-dspark speculative decoding, n-max 9
+```
 
-Use mumble-cleanup-2stage's official system prompt verbatim over the plain Qwen2.5 chat template, implemented in `DictationPromptAdapter`; do not add extra instructions, control lines, or a think block — the model was trained on that single fixed format.
+`SottoTranscriptCleaner` owns the resident server lifecycle and records prefill, TTFT, decode, completion, resident-memory, and draft acceptance metrics. The cleanup stage is only for faithful transcript cleanup, not general rewriting or open-ended instruction following.
 
 Create a dedicated abstraction:
 
@@ -155,7 +153,7 @@ public interface ITranscriptCleaner
 }
 ```
 
-mumble-cleanup-2stage is used only for faithful transcript cleanup. It must not be asked to perform general rewriting, summarization, or open-ended instruction following.
+LFM2.5 QAD is used only for faithful transcript cleanup. It must not be asked to perform general rewriting, summarization, or open-ended instruction following.
 
 ### Text Insertion
 
@@ -1313,7 +1311,7 @@ public sealed record TranscriptStyle(
 
 Pass the transcript into the prompt adapter.
 
-The Mumble fine-tune was trained on a single fixed input format: its official system
+The LFM2.5 instruction model uses a fixed input format: its system
 prompt, the raw transcript, and nothing else. Style selection stays in the app for
 context classification and history, but is not forwarded to the cleanup model; any
 formatting in its output emerges naturally rather than being forced.
@@ -1355,7 +1353,7 @@ Implement the following pipeline.
 8. Create a recoverable session record.
 9. Open the temporary audio file.
 10. Start microphone capture.
-11. Start the Canary ASR session.
+11. Start the Nemotron ASR session.
 ```
 
 ## During Recording
@@ -1807,7 +1805,7 @@ Produce all of the following:
 3. Working Windows tray application.
 4. Global push-to-talk.
 5. Hands-free recording.
-7. Local Mumble cleanup integration.
+7. Local LFM2.5 cleanup integration.
 8. Application and website detection.
 9. Output-style classification.
 10. Reliable insertion and clipboard recovery.
@@ -1913,7 +1911,7 @@ Implement:
 
 ```text
 ✅ Worker readiness detection
-✅ Canary initialization
+✅ Nemotron initialization
 ✅ Streaming audio input
 ✅ Final result
 ✅ Retry from saved audio
@@ -1924,8 +1922,8 @@ Implement:
 Implement:
 
 ```text
-✅ mumble-cleanup-2stage loading
-✅ Official prompt adapter
+✅ LFM2.5 QAD server and optional DSpark loading
+✅ Deterministic chat prompt adapter
 ✅ Deterministic inference
 ✅ Cleanup validation
 ✅ Raw-transcript fallback
@@ -2031,7 +2029,7 @@ The release is complete only when a user can perform this scenario:
 1. Install and launch the app on Windows 11.
 
 2. Select or confirm a microphone.
-3. Install or locate the local Canary and cleanup models.
+3. Install or locate the local Nemotron ASR and LFM2.5 cleanup models.
 4. Focus a Gmail compose field in Chrome.
 
 5. Hold the push-to-talk shortcut.

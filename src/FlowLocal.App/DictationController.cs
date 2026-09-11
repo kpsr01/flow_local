@@ -273,6 +273,11 @@ public sealed class DictationController : IDisposable
             }
             var raw = new RawTranscript(transcription.Text);
             if (string.IsNullOrWhiteSpace(raw.Text)) throw new InvalidOperationException("Speech recognition returned an empty transcript.");
+            if (_asr is CanaryAsrService canary && canary.LastMetrics is { } asrMetrics)
+                _logger.LogInformation(
+                    "ASR metrics: audio={AudioMs}ms finalize={FinalizeMs:F1}ms processing={ProcessingMs:F1}ms partials={PartialCount} firstPartialAudio={FirstPartialAudioMs}ms",
+                    asrMetrics.AudioMilliseconds, asrMetrics.FinalizeMilliseconds, asrMetrics.ProcessingMilliseconds,
+                    asrMetrics.PartialCount, asrMetrics.FirstPartialAudioMilliseconds);
             await SaveAsync(_entry with { RawTranscript = raw.Text, AsrDuration = Stopwatch.GetElapsedTime(step), RetryCount = retries, State = RecordingState.Transcribing }, token);
             LogLifecycle(_entry);
 
@@ -288,6 +293,13 @@ public sealed class DictationController : IDisposable
                 ErrorCode = usedFallback ? DictationErrorCode.CleanupFailed : DictationErrorCode.None
             }, token);
             LogLifecycle(_entry);
+            if (_cleaner is SottoTranscriptCleaner cleaner && cleaner.LastMetrics is { } cleanupMetrics)
+                _logger.LogInformation(
+                    "Cleanup metrics: inputTokens={InputTokens} outputTokens={OutputTokens} ttft={TtftMs}ms decode={DecodeMs}ms tokPerSecond={TokPerSecond} draft={DraftTokens}/{DraftAcceptedTokens} complete={CompleteMs:F1}ms dspark={Dspark}",
+                    cleanupMetrics.InputTokens, cleanupMetrics.OutputTokens, cleanupMetrics.TimeToFirstTokenMilliseconds,
+                    cleanupMetrics.DecodeMilliseconds, cleanupMetrics.DecodeTokensPerSecond,
+                    cleanupMetrics.DraftTokens, cleanupMetrics.DraftAcceptedTokens,
+                    cleanupMetrics.CompleteMilliseconds, cleanupMetrics.DsparkEnabled);
 
             if (_target is null || !await _targets.RestoreAndValidateAsync(_target, token))
             {

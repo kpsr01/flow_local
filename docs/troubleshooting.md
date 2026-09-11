@@ -2,14 +2,14 @@
 
 ## Initialization overlay reports a failure
 
-FlowLocal enables dictation only after history, the Canary speech model, and the cleanup model initialize. Read the full overlay message, correct the named prerequisite, then exit from the tray menu and restart; the current UI has no general initialization retry command.
+FlowLocal enables dictation only after history, the Nemotron speech worker, and the LFM2.5 cleanup server initialize. Read the full overlay message, correct the named prerequisite, then exit from the tray menu and restart; the current UI has no general initialization retry command.
 
 ### Speech model is missing or not ready
 
-- Confirm the machine is online for the first model download, or that `%LOCALAPPDATA%\FlowLocal\Models\canary-180m-flash-gguf` contains `canary-180m-flash-Q4_K_M.gguf`.
-- If a download was interrupted, delete the `.download` partial file (or the whole folder) and restart FlowLocal so the worker fetches it again.
+- Confirm the machine is online for the first model download, or that `%LOCALAPPDATA%\FlowLocal\Models\nemotron-speech-streaming-en-0.6b-Q4_K_M.gguf` exists.
+- If a download was interrupted, delete the `.download` partial file and restart FlowLocal so the worker fetches it again.
 - Ensure the Windows account can write to `%LOCALAPPDATA%\FlowLocal\Models`. FlowLocal owns that directory.
-- First initialization loads the GGUF and runs a warm-up inference and can take a few seconds on some machines.
+- First initialization loads the GGUF and runs a streaming warm-up inference and can take a few seconds on some machines.
 
 ### “Set FLOWLOCAL_CLEANUP_MODEL_PATH…” or cleanup model not found
 
@@ -20,15 +20,16 @@ Check the variable in the same account/environment used to launch FlowLocal:
 Test-Path $env:FLOWLOCAL_CLEANUP_MODEL_PATH
 ```
 
-If the variable is unset, FlowLocal looks for a `.gguf` file in `%LOCALAPPDATA%\FlowLocal\Models` (where the installer places it), preferring a file named `sotto-cleanup-lfm25-350m-q4_k_m.gguf`. If the first command has a path but `$env:` is empty, start a new shell or restart Explorer before launching the app. The value must be a full path to one readable GGUF file, not a directory.
+If the variable is unset, FlowLocal looks for `LFM2.5-1.2B-Instruct-QAD-Q4_0.gguf` in `%LOCALAPPDATA%\FlowLocal\Models`. `FLOWLOCAL_CLEANUP_DSPARK=1` additionally requires `LFM2.5-1.2B-Instruct-DSpark-Q4_K_M.gguf`; `FLOWLOCAL_LLAMA_SERVER_PATH` overrides the packaged/source `llama-server.exe`. Each value must be a full path to one readable file, not a directory.
 
 ### Cleanup model fails to load
 
-The file may be incomplete or incompatible with LLamaSharp/llama.cpp, or too large for available memory. Rebuild it from the [sotto-cleanup-lfm25-350m](https://huggingface.co/juanquivilla/sotto-cleanup-lfm25-350m) BF16 checkpoint: `python convert_hf_to_gguf.py <checkpoint-dir> --outfile m.gguf --outtype bf16`, then `llama-quantize m.gguf sotto-cleanup-lfm25-350m-q4_k_m.gguf Q4_K_M` (llama.cpp b10603 or newer for LFM2 support). The deployed copy's SHA-256 is `6cd4dfed74fa20121a3144866fdc3853a680b764f21f2eaaa83811c396f00f3a`. Inference runs on CPU by default; setting `FLOWLOCAL_CLEANUP_GPU=1` enables experimental full GPU offload with automatic fallback to CPU.
+The target GGUF or llama.cpp runtime may be incomplete or incompatible, or too large for available memory. Confirm `llama-server.exe` exists beside the packaged app or set `FLOWLOCAL_LLAMA_SERVER_PATH`; confirm the QAD GGUF and, when enabled, the DSpark sidecar exist. The server uses CPU inference by default and the Settings diagnostics show the active execution target.
+For production timing evidence, read `%LOCALAPPDATA%\FlowLocal\pipeline-metrics.log`. It contains ASR, cleanup, and lifecycle metrics only; transcript and audio content are not written there.
 
 ### Speech recognition fails or the app previously crashed while transcribing
 
-All Canary model code runs in the separate `FlowLocal.AsrWorker.exe` process. If recognition stalls, the worker is terminated and respawned automatically, and the dictation fails with a typed error while keeping the saved recording for retry. If every session still reports `AsrFailed`, confirm the GGUF above exists (the Settings page shows the backend state as `Ready — canary-180m-flash · CPU · greedy · pnc off` when it loaded) and verify a microphone is capturing (Settings > Microphone).
+All Nemotron model code runs in the separate `FlowLocal.AsrWorker.exe` process. If recognition stalls, the worker is terminated and respawned automatically, and the dictation fails with a typed error while keeping the saved recording for retry. If every session still reports `AsrFailed`, confirm the Nemotron GGUF exists and verify a microphone is capturing (Settings > Microphone).
 
 ## Microphone problems
 

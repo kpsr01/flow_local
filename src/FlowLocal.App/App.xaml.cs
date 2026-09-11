@@ -6,7 +6,6 @@ using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using FlowLocal.Core;
 using System.Runtime.InteropServices;
-using Microsoft.Extensions.Logging.Abstractions;
 using Forms = System.Windows.Forms;
 
 namespace FlowLocal.App;
@@ -85,10 +84,12 @@ public partial class App : Application
         var styleClassifier = new OutputStyleClassifier();
         var styleOverrides = new JsonStyleOverrideStore();
         var insertion = new ClipboardTextInsertionService();
+        var metricsLogger = new PipelineMetricsLogger(
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "FlowLocal", "pipeline-metrics.log"));
         _dictation = new DictationController(
             new RecordingStateMachine(), targets, contextDetector, styleClassifier, styleOverrides,
             _audio, _asr, _cleaner, _cleaner, insertion, _overlayWindow,
-            NullLogger<DictationController>.Instance, _history,
+            metricsLogger, _history,
             asrModelName: CanaryAsrService.ModelName);
         var historyActions = new HistoryActionService(_history, _asr, _cleaner, targets, insertion);
         _historyActions = historyActions;

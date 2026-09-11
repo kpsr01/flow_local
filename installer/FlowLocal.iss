@@ -30,7 +30,7 @@ WizardStyle=modern
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Messages]
-WelcomeLabel2=This will install [name/ver], a private, local dictation assistant.%n%nEverything runs on this PC: speech recognition and text cleanup never touch the cloud.%n%nThe installer also downloads the speech-recognition and text-cleanup models (roughly 370 MB total). An internet connection is required once.
+WelcomeLabel2=This will install [name/ver], a private, local dictation assistant.%n%nEverything runs on this PC: speech recognition and text cleanup never touch the cloud.%n%nThe installer also downloads the speech-recognition and text-cleanup models (roughly 1.35 GB total). An internet connection is required once.
 SelectDirDesc=Where should FlowLocal be installed?
 FinishedLabelNoIcons=[name] has been installed. The dictation capsule is running in your system tray - hold Ctrl+Win anywhere and speak.
 FinishedLabel=[name] has been installed. The dictation capsule is running in your system tray - hold Ctrl+Win anywhere and speak.
@@ -44,19 +44,26 @@ Name: "desktopicon"; Description: "Create a &desktop shortcut"; \
 [Files]
 ; App payload
 Source: "..\artifacts\publish\win-x64\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
-; Canary 180M Flash ASR GGUF, Q4_K_M quant (CC-BY-4.0, transcribe.cpp port)
-Source: "https://huggingface.co/handy-computer/canary-180m-flash-gguf/resolve/main/canary-180m-flash-Q4_K_M.gguf"; \
-    DestDir: "{localappdata}\FlowLocal\Models\canary-180m-flash-gguf"; DestName: "canary-180m-flash-Q4_K_M.gguf"; ExternalSize: 139223744; \
-    Flags: external download ignoreversion; Check: Not CanaryModelPresent()
-Source: "https://huggingface.co/baddu/sotto-cleanup-lfm25-350m-GGUF/resolve/main/sotto-cleanup-lfm25-350m-q4_k_m.gguf"; \
-    DestDir: "{localappdata}\FlowLocal\Models"; DestName: "sotto-cleanup-lfm25-350m-q4_k_m.gguf"; ExternalSize: 229311200; \
-    Flags: external download ignoreversion; Check: Not GgufSkipDownload()
+; Nemotron Speech Streaming EN 0.6B ASR GGUF, Q4_K_M (transcribe.cpp 0.2.3)
+Source: "https://huggingface.co/handy-computer/nemotron-speech-streaming-en-0.6b-gguf/resolve/main/nemotron-speech-streaming-en-0.6b-Q4_K_M.gguf"; \
+    DestDir: "{localappdata}\FlowLocal\Models"; DestName: "nemotron-speech-streaming-en-0.6b-Q4_K_M.gguf"; ExternalSize: 475436032; \
+    Flags: external download ignoreversion; Check: Not NemotronModelPresent()
+; LFM2.5-1.2B-Instruct QAD Q4_0 cleanup target
+Source: "https://huggingface.co/LiquidAI/LFM2.5-1.2B-Instruct-GGUF/resolve/main/LFM2.5-1.2B-Instruct-QAD-Q4_0.gguf"; \
+    DestDir: "{localappdata}\FlowLocal\Models"; DestName: "LFM2.5-1.2B-Instruct-QAD-Q4_0.gguf"; ExternalSize: 695755488; \
+    Flags: external download ignoreversion; Check: Not CleanupModelPresent()
+; Optional LFM2.5 DSpark Q4_K_M draft sidecar
+Source: "https://huggingface.co/LiquidAI/LFM2.5-1.2B-Instruct-DSpark-GGUF/resolve/main/LFM2.5-1.2B-Instruct-DSpark-Q4_K_M.gguf"; \
+    DestDir: "{localappdata}\FlowLocal\Models"; DestName: "LFM2.5-1.2B-Instruct-DSpark-Q4_K_M.gguf"; ExternalSize: 175848992; \
+    Flags: external download ignoreversion; Check: Not DsparkModelPresent()
 
 [InstallDelete]
 ; Remove retired speech and cleanup models from upgraded installs.
 Type: files; Name: "{localappdata}\FlowLocal\Models\s1-mini-q4_k_m.gguf"
 Type: files; Name: "{localappdata}\FlowLocal\Models\mumble-cleanup-2stage-q4_0.gguf"
 Type: filesandordirs; Name: "{localappdata}\FlowLocal\Models\moonshine-streaming-medium"
+Type: files; Name: "{localappdata}\FlowLocal\Models\canary-180m-flash-gguf\canary-180m-flash-q4_k_m.gguf"
+Type: files; Name: "{localappdata}\FlowLocal\Models\sotto-cleanup-lfm25-350m-q4_k_m.gguf"
 
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExeName}"; IconFilename: "{app}\{#AppExeName}"; IconIndex: 0; AppUserModelID: "FlowLocal.App"
@@ -70,17 +77,23 @@ Filename: "{app}\{#AppExeName}"; Description: "Launch {#AppName} now"; \
 
 [Code]
 const
-  CanaryModelDir = '{localappdata}\FlowLocal\Models\canary-180m-flash-gguf';
-  GgufTarget = '{localappdata}\FlowLocal\Models\sotto-cleanup-lfm25-350m-q4_k_m.gguf';
+  NemotronModel = '{localappdata}\FlowLocal\Models\nemotron-speech-streaming-en-0.6b-Q4_K_M.gguf';
+  CleanupModel = '{localappdata}\FlowLocal\Models\LFM2.5-1.2B-Instruct-QAD-Q4_0.gguf';
+  DsparkModel = '{localappdata}\FlowLocal\Models\LFM2.5-1.2B-Instruct-DSpark-Q4_K_M.gguf';
 
-function CanaryModelPresent(): Boolean;
+function NemotronModelPresent(): Boolean;
 begin
-  Result := FileExists(ExpandConstant(CanaryModelDir + '\canary-180m-flash-Q4_K_M.gguf'));
+  Result := FileExists(ExpandConstant(NemotronModel));
 end;
 
-function GgufSkipDownload(): Boolean;
+function CleanupModelPresent(): Boolean;
 begin
-  Result := FileExists(ExpandConstant(GgufTarget));
+  Result := FileExists(ExpandConstant(CleanupModel));
+end;
+
+function DsparkModelPresent(): Boolean;
+begin
+  Result := FileExists(ExpandConstant(DsparkModel));
 end;
 
 function DeleteHistory: Boolean;

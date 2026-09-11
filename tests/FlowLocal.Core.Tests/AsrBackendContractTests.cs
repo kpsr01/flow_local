@@ -9,7 +9,7 @@ public sealed class AsrBackendContractTests
     {
         using var service = new CanaryAsrService();
 
-        Assert.Equal("canary-180m-flash-q4_k_m", CanaryAsrService.ModelName);
+        Assert.Equal("nemotron-speech-streaming-en-0.6b-q4_k_m", CanaryAsrService.ModelName);
         Assert.Equal(AsrBackendState.NotInstalled, service.Status.State);
         Assert.Null(service.Status.ModelId);
         Assert.Null(service.Status.Provider);
@@ -32,11 +32,11 @@ public sealed class AsrBackendContractTests
     {
         var status = new AsrBackendStatus(
             AsrBackendState.Ready,
-            "canary-180m-flash-q4_k_m",
+            "nemotron-speech-streaming-en-0.6b-q4_k_m",
             "CPU");
 
         Assert.Equal(AsrBackendState.Ready, status.State);
-        Assert.Equal("canary-180m-flash-q4_k_m", status.ModelId);
+        Assert.Equal("nemotron-speech-streaming-en-0.6b-q4_k_m", status.ModelId);
         Assert.Equal("CPU", status.Provider);
         Assert.Null(status.FailureMessage);
     }

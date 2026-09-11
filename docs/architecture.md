@@ -20,9 +20,9 @@ flowchart LR
   X --> S[Classify output style]
   C --> A[WASAPI capture]
   A --> W[PCM WAV recovery file]
-  A --> N[Canary GGUF worker stream]
+  A --> N[Nemotron streaming worker]
   N --> R[Raw transcript]
-  R --> L[Local Sotto cleanup]
+  R --> L[Resident LFM2.5 QAD cleanup]
   S --> L
   L --> V[Validate cleaned result]
   V --> I[Restore and validate target]
@@ -32,15 +32,15 @@ flowchart LR
 
 On shortcut-down, `GlobalShortcutService` posts to the UI dispatcher. `DictationController` captures the foreground target, detects context, resolves style, creates a recoverable history row and WAV file, starts an ASR session in `FlowLocal.AsrWorker.exe`, and starts WASAPI capture. Audio is written to the WAV and streamed to the worker.
 
-On shortcut-up, capture stops and the WAV is finalized. ASR produces the complete English transcript. `SottoTranscriptCleaner` cleans it; `CleanupResultValidator` rejects empty, suspiciously expanded, refusal-like, or leaked-control-token output. Cleanup is attempted twice, then falls back to the raw transcript with a recorded cleanup error.
+On shortcut-up, capture stops and the WAV is finalized. The resident ASR session finalizes the accumulated stream and returns the complete English transcript. `SottoTranscriptCleaner` sends it to the resident llama.cpp LFM2.5 server; `CleanupResultValidator` rejects empty, suspiciously expanded, refusal-like, or leaked-control-token output. Cleanup is attempted twice, then falls back to the raw transcript with a recorded cleanup error. ASR finalization and cleanup prefill/TTFT/decode/DSpark metrics are logged.
 
 Before insertion, `ActiveTargetTracker` restores and validates the captured target. `ClipboardTextInsertionService` tries safe UI Automation, transactional clipboard paste, then Unicode `SendInput`. Terminal targets skip UI Automation and do not proceed past a failed or ambiguous paste. It refuses password/protected targets, higher/unknown integrity injection, mismatched focused elements, and stale targets. Clipboard-only fallback preserves the text for manual paste rather than claiming insertion succeeded.
 
 ## Local model boundaries
 
-`CanaryAsrService` is a thin stdio client for the headless `FlowLocal.AsrWorker.exe` process, which runs [Canary 180M Flash](https://huggingface.co/handy-computer/canary-180m-flash-gguf) (Q4_K_M GGUF) through [transcribe.cpp](https://github.com/handy-computer/transcribe.cpp) on the CPU backend. Audio accumulates as 16 kHz mono float PCM during a session; at release the worker runs one `transcribe_run` call over the full buffer, so results are final-on-release. Decoding is greedy with punctuation/capitalization off (Sotto restores formatting), and timestamps, translation, and language detection are disabled. The model and session stay loaded between dictations; a half-second warm-up inference at init removes first-use graph setup from the first transcript. Missing model files are downloaded from Hugging Face at first init into `%LOCALAPPDATA%\FlowLocal\Models\canary-180m-flash-gguf`.
+`CanaryAsrService` is a thin stdio client for the headless `FlowLocal.AsrWorker.exe` process, which runs [Nemotron Speech Streaming EN 0.6B](https://huggingface.co/handy-computer/nemotron-speech-streaming-en-0.6b-gguf) (Q4_K_M GGUF) through [transcribe.cpp](https://github.com/handy-computer/transcribe.cpp) 0.2.3 on the CPU backend. Audio is fed as 16 kHz mono float PCM during a session; streaming uses a parakeet right-context of 1 (approximately 80 ms lookahead) and greedy decoding with PnC disabled. The worker and session remain loaded between dictations, and partial events are available to the client even though only the final transcript is inserted.
 
-`SottoTranscriptCleaner` uses LLamaSharp to run [sotto-cleanup-lfm25-350m](https://huggingface.co/juanquivilla/sotto-cleanup-lfm25-350m) (`sotto-cleanup-lfm25-350m-q4_k_m.gguf`, Q4_K_M — a full fine-tune of LiquidAI/LFM2.5-350M-Base published by `juanquivilla`; the GGUF is converted from the BF16 checkpoint with llama.cpp's `convert_hf_to_gguf.py`). It reads the model from `FLOWLOCAL_CLEANUP_MODEL_PATH`, falling back to the `.gguf` in `%LOCALAPPDATA%\FlowLocal\Models` (preferring a `sotto-cleanup` file). Prompts use the model card's exact completion format — `### Input:` / `### Output:`, no chat template and no system prompt, since the base-model fine-tune was trained on that single fixed layout; decoding is greedy at temperature 0 with the card's `repetition_penalty=1.05` (penalty window covering the whole output, matching the HF reference) and `max_new_tokens = max(900, 1.5 x input_words)`, stopping at the next `###` marker like the card's example, on an 8192-token context and CPU inference by default (Q4_K_M benchmarked ~2.6x faster prompt processing than Q5_K_M at equivalent quality); setting `FLOWLOCAL_CLEANUP_GPU=1` requests full GPU offload with automatic fallback to CPU. The model stays loaded between requests. It neither downloads the GGUF nor searches beyond that directory.
+`SottoTranscriptCleaner` starts one resident [llama.cpp](https://github.com/ggml-org/llama.cpp) `llama-server.exe` process for Liquid AI's [LFM2.5-1.2B-Instruct-GGUF](https://huggingface.co/LiquidAI/LFM2.5-1.2B-Instruct-GGUF), using `LFM2.5-1.2B-Instruct-QAD-Q4_0.gguf` with a deterministic chat prompt and streamed completion. `FLOWLOCAL_CLEANUP_DSPARK=1` adds the `LFM2.5-1.2B-Instruct-DSpark-Q4_K_M.gguf` sidecar through `draft-dspark`; streamed timings include draft and accepted-token counts. The packaged app carries the CPU server runtime; source runs can override model and executable paths with environment variables.
 
 Both inference stages are local after prerequisites are present. First-time speech-model acquisition and normal package installation can use the network.
 

@@ -1,0 +1,10 @@
+[
+  {"name":"very-short","text":"fix the login button alignment on mobile"},
+  {"name":"short-coding","text":"remove the duplicate API call in the user profile component and add a test for it"},
+  {"name":"filler-auth","text":"uh can you fix the auth middleware so basically if the token has expired it should return 401 instead of trying to refresh it there"},
+  {"name":"technical-identifiers","text":"update getUserById in src/auth/session.ts and keep AuthProvider and useEffect unchanged"},
+  {"name":"command-constraints","text":"after fixing it run npm run test e2e and don't change the existing API"},
+  {"name":"error-text","text":"the request fails with HTTP 429 and the error says Too Many Requests retry after 30 seconds"},
+  {"name":"numbers-versions","text":"upgrade the client from version 2.4.1 to 2.5.0 but preserve the 409 and 503 handling"},
+  {"name":"long-constrained","text":"okay so please refactor the checkout flow to remove the duplicate network request when the address changes. Keep the public function name submitOrder and the existing API response shape. The loading state must still reset on both success and failure. Add a regression test for two address changes, run npm run test e2e, and do not modify the payment provider integration or the error message shown to users."}
+]

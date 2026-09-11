@@ -300,17 +300,18 @@ public partial class MainWindow : Window
     }
 
     public void RefreshRuntimeDiagnostics()
-    {        VersionText.Text = (Assembly.GetEntryAssembly()?.GetCustomAttribute<AssemblyInformationalVersionAttribute>()
+    {
+        VersionText.Text = (Assembly.GetEntryAssembly()?.GetCustomAttribute<AssemblyInformationalVersionAttribute>()
                 ?.InformationalVersion ?? Assembly.GetEntryAssembly()?.GetName().Version?.ToString()) ?? "—";
         RuntimeText.Text = $".NET {Environment.Version} — {Environment.OSVersion.VersionString}";
-        AsrModelText.Text = $"{CanaryAsrService.ModelName} (Canary GGUF · transcribe.cpp CPU)";
+        AsrModelText.Text = $"{CanaryAsrService.ModelName} (Nemotron GGUF · transcribe.cpp streaming CPU)";
         var status = _asr?.Status;
         AsrStateText.Text = status is null ? "—"
             : status.Provider is { Length: > 0 } provider ? $"{status.State} — {provider}" : status.State.ToString();
         CleanupBackendText.Text = _cleaner is null ? "—" :
             $"{_cleaner.DisplayName}{(_cleaner.IsLoaded ? $" — {_cleaner.ExecutionTarget}" : " — not loaded yet")}";
         CleanupPathText.Text = SottoTranscriptCleaner.ConfiguredModelPath
-            ?? "Set FLOWLOCAL_CLEANUP_MODEL_PATH to a local GGUF file.";
+            ?? "Set FLOWLOCAL_CLEANUP_MODEL_PATH to a local QAD GGUF file.";
         if (_audio is not null && FollowDefaultMicCheckBox is not null)
         {
             MicModeText.Text = FollowDefaultMicCheckBox.IsChecked == true

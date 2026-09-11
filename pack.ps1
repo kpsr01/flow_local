@@ -28,6 +28,11 @@ dotnet publish (Join-Path $root 'src\FlowLocal.App\FlowLocal.App.csproj') `
     -p:PublishSingleFile=false -p:PublishReadyToRun=false `
     -p:Version=$Version -o $publish
 if ($LASTEXITCODE) { throw "dotnet publish failed with exit code $LASTEXITCODE." }
+$llamaZip = Join-Path $env:TEMP 'flowlocal-llama-b10905.zip'
+$llamaDir = Join-Path $publish 'llama'
+Invoke-WebRequest 'https://github.com/ggerganov/llama.cpp/releases/download/b10905/llama-b10905-bin-win-cpu-x64.zip' -OutFile $llamaZip
+Expand-Archive $llamaZip -DestinationPath $llamaDir -Force
+Remove-Item $llamaZip -Force
 if ($PortableOnly) {
     Write-Host "Portable artifact published to $publish; installer build skipped."
     return

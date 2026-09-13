@@ -59,8 +59,17 @@ public sealed class SottoTranscriptCleaner : ITranscriptCleaner, ICleanupBackend
         }
     }
 
-    public async Task<CleanTranscriptResult> CleanAsync(
-        RawTranscript transcript, TranscriptStyle style, CancellationToken cancellationToken)
+    public Task<CleanTranscriptResult> CleanAsync(
+        RawTranscript transcript, TranscriptStyle style, CancellationToken cancellationToken) =>
+        CleanCoreAsync(transcript, DictationPromptAdapter.Build(transcript), cancellationToken);
+
+    internal Task<CleanTranscriptResult> CleanCodingAsync(
+        RawTranscript transcript, TranscriptStyle style, CodingTarget target, PromptingPolicy policy,
+        CancellationToken cancellationToken) =>
+        CleanCoreAsync(transcript, DictationPromptAdapter.Build(transcript, target, policy), cancellationToken);
+
+    private async Task<CleanTranscriptResult> CleanCoreAsync(
+        RawTranscript transcript, string prompt, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(transcript);
         await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
@@ -72,7 +81,7 @@ public sealed class SottoTranscriptCleaner : ITranscriptCleaner, ICleanupBackend
             {
                 Content = JsonContent.Create(new
                 {
-                    prompt = DictationPromptAdapter.Build(transcript),
+                    prompt,
                     n_predict = Math.Clamp(transcript.Text.Length / 2, 32, 256),
                     temperature = 0,
                     top_k = 1,

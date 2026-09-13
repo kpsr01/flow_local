@@ -16,23 +16,26 @@ The app is composed directly in `App.OnStartup`; there is no dependency-injectio
 flowchart LR
   K[Global keyboard hook] --> C[DictationController]
   C --> T[Capture active window and focused control]
-  C --> X[Detect app/browser context]
+  T --> X[Detect app/browser context]
   X --> S[Classify output style]
-  C --> A[WASAPI capture]
-  A --> W[PCM WAV recovery file]
+  T --> M[Detect coding model/reasoning signal]
+  M --> G[Cached compact prompting policy]
+  A[WASAPI capture] --> W[PCM WAV recovery file]
   A --> N[Nemotron streaming worker]
   N --> R[Raw transcript]
   R --> L[Resident LFM2.5 QAD cleanup]
   S --> L
+  M --> L
+  G --> L
   L --> V[Validate cleaned result]
   V --> I[Restore and validate target]
   I --> P[Safe insertion pipeline]
   C --> D[(SQLite history)]
 ```
 
-On shortcut-down, `GlobalShortcutService` posts to the UI dispatcher. `DictationController` captures the foreground target, detects context, resolves style, creates a recoverable history row and WAV file, starts an ASR session in `FlowLocal.AsrWorker.exe`, and starts WASAPI capture. Audio is written to the WAV and streamed to the worker.
+On shortcut-down, `GlobalShortcutService` posts to the UI dispatcher. `DictationController` captures the foreground target, detects app/browser context, resolves style, and reads the optional `FlowLocal/1|claude-code|model|effort|unix-time` signal from the captured coding terminal title. A missing or stale signal remains an explicit unknown coding target. It then creates a recoverable history row and WAV file, starts an ASR session in `FlowLocal.AsrWorker.exe`, and starts WASAPI capture.
 
-On shortcut-up, capture stops and the WAV is finalized. The resident ASR session finalizes the accumulated stream and returns the complete English transcript. `SottoTranscriptCleaner` sends it to the resident llama.cpp LFM2.5 server; `CleanupResultValidator` rejects empty, suspiciously expanded, refusal-like, or leaked-control-token output. Cleanup is attempted twice, then falls back to the raw transcript with a recorded cleanup error. ASR finalization and cleanup prefill/TTFT/decode/DSpark metrics are logged.
+On shortcut-up, capture stops and the WAV is finalized. The resident ASR session finalizes the accumulated stream and returns the complete English transcript. For coding targets, `PromptPolicyRegistry` selects a cached compact policy from `prompting-guides`; otherwise the existing generic cleanup prompt is used. `SottoTranscriptCleaner` sends the selected prompt to the resident llama.cpp LFM2.5 server. `CleanupResultValidator` rejects empty, suspiciously expanded, refusal-like, or leaked-control-token output. Cleanup is attempted twice, then falls back to the raw transcript with a recorded cleanup error. ASR finalization and cleanup prefill/TTFT/decode/DSpark metrics are logged.
 
 Before insertion, `ActiveTargetTracker` restores and validates the captured target. `ClipboardTextInsertionService` tries safe UI Automation, transactional clipboard paste, then Unicode `SendInput`. Terminal targets skip UI Automation and do not proceed past a failed or ambiguous paste. It refuses password/protected targets, higher/unknown integrity injection, mismatched focused elements, and stale targets. Clipboard-only fallback preserves the text for manual paste rather than claiming insertion succeeded.
 
@@ -46,7 +49,7 @@ Both inference stages are local after prerequisites are present. First-time spee
 
 ## Context detection and classification
 
-`ActiveTargetTracker` snapshots process/window identity, focused UI Automation metadata, integrity information, and whether injection is safe. `ApplicationContextDetector` combines application metadata with `BrowserContextDetector`; browser detection extracts and normalizes a domain rather than retaining a full URL.
+`ActiveTargetTracker` snapshots process/window identity, focused UI Automation metadata, integrity information, and whether injection is safe. `ApplicationContextDetector` combines application metadata with `BrowserContextDetector`; browser detection extracts and normalizes a domain rather than retaining a full URL. `CodingContextDetector` recognizes supported code editors and terminals, then accepts only the fresh, explicitly formatted Claude Code title signal.
 
 `OutputStyleClassifier` applies rules in this order:
 
@@ -58,7 +61,7 @@ Both inference stages are local after prerequisites are present. First-time spee
 6. generic browser;
 7. general fallback.
 
-Known domain groups include major webmail, AI chat, work/personal messaging, document, and Notion hosts. Known applications include Outlook/Word/Notepad/Notion/Obsidian/OneNote, common messaging clients, common code editors/IDEs, and Windows terminal/shell processes. The authoritative tables are `ClassificationRules.cs`; user overrides live in `%LOCALAPPDATA%\FlowLocal\application-styles.json` and take precedence.
+Known domain groups include major webmail, AI chat, work/personal messaging, document, and Notion hosts. Known applications include Outlook/Word/Notepad/Notion/Obsidian/OneNote, common messaging clients, common code editors/IDEs, and Windows terminal/shell processes. The authoritative tables are `ClassificationRules.cs`; user overrides live in `%LOCALAPPDATA%\FlowLocal\application-styles.json` and take precedence. Claude Code's optional statusline adapter is `integrations/claude-code/flowlocal-statusline.ps1`; it emits the title signal consumed by `CodingContextDetector`.
 
 ## Persistence and recovery
 

@@ -86,6 +86,16 @@ public sealed record ContextDetectionDiagnostic(
     string Source,
     string? Error = null);
 
+public sealed record CodingTarget(
+    string Environment,
+    string? Model,
+    string? Reasoning,
+    string SignalSource,
+    string? UnknownReason = null)
+{
+    public bool IsKnown => Model is not null && Reasoning is not null;
+}
+
 public sealed record ApplicationContext(
     string ExecutableName,
     string DisplayName,
@@ -147,7 +157,45 @@ public static class CleanupResultValidator
         return rawVocabulary.Count(outputVocabulary.Contains) / (double)rawVocabulary.Count;
     }
 }
+public static class CodingCleanupValidator
+{
+    private static readonly HashSet<string> SafeFillers = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "uh", "um", "er", "erm", "basically"
+    };
 
+    public static bool PreservesSubstantiveWords(RawTranscript raw, CleanTranscriptResult cleaned)
+    {
+        ArgumentNullException.ThrowIfNull(raw);
+        ArgumentNullException.ThrowIfNull(cleaned);
+
+        var source = raw.Text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+        var output = cleaned.Text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+        var sourceIndex = 0;
+        for (var outputIndex = 0; outputIndex < output.Length; outputIndex++)
+        {
+            while (outputIndex == 0 && sourceIndex < source.Length && IsSafeFiller(source[sourceIndex])) sourceIndex++;
+            if (sourceIndex >= source.Length ||
+                !Equivalent(source[sourceIndex], output[outputIndex], outputIndex == output.Length - 1))
+                return false;
+            sourceIndex++;
+        }
+
+        return sourceIndex == source.Length;
+    }
+
+    private static bool IsSafeFiller(string token) =>
+        SafeFillers.Contains(token.Trim(',', '.', ';', ':', '!', '?'));
+
+    private static bool Equivalent(string raw, string output, bool last)
+    {
+        if (string.Equals(raw, output, StringComparison.Ordinal)) return true;
+        return last && output.EndsWith('.') &&
+            string.Equals(raw, output[..^1], StringComparison.Ordinal);
+
+
+    }
+}
 public sealed record ActiveTarget(
     int ProcessId,
     nint WindowHandle,

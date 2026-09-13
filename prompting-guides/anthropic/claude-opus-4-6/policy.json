@@ -1,0 +1,17 @@
+{
+  "model": "claude-opus-4-6",
+  "modelFamily": "Claude Opus",
+  "sourceReference": "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices",
+  "sourceDate": "2026-09-11",
+  "policies": {
+    "default": {
+      "reasoningModes": ["low", "medium", "high", "xhigh", "max"],
+      "rules": [
+        "State the requested goal and explicit constraints clearly.",
+        "Preserve the user's delegation level; do not add a solution or plan.",
+        "Use targeted instructions, not blanket tool or thoroughness requirements.",
+        "Keep the requested scope focused and avoid unnecessary extra work."
+      ]
+    }
+  }
+}

@@ -39,6 +39,7 @@ public sealed class DictationController : IDisposable
 
     public ApplicationContext? CurrentContext { get; private set; }
     public OutputClassification? CurrentClassification { get; private set; }
+    public CodingTarget? CurrentCodingTarget { get; private set; }
 
     /// <summary>Enables hands-free activation by double-tapping the push-to-talk chord.</summary>
     public bool HandsFreeEnabled
@@ -171,9 +172,11 @@ public sealed class DictationController : IDisposable
 
             CurrentContext = null;
             CurrentClassification = GeneralClassification();
+            CurrentCodingTarget = null;
             _style = CurrentClassification.Style;
             if (_target is not null)
             {
+                CurrentCodingTarget = CodingContextDetector.Detect(_target);
                 try
                 {
                     var settings = (await _styleOverrides.LoadAsync(token)).Settings;
@@ -284,7 +287,7 @@ public sealed class DictationController : IDisposable
             _stateMachine.TransitionTo(RecordingState.Cleaning);
             await _overlay.Dispatcher.InvokeAsync(_overlay.ShowCleaning);
             step = Stopwatch.GetTimestamp();
-            var (cleaned, usedFallback) = await CleanWithFallbackStatusAsync(_cleaner, raw, _style, token);
+            var (cleaned, usedFallback) = await CleanWithFallbackStatusAsync(_cleaner, raw, _style, CurrentCodingTarget, token);
             await SaveAsync(_entry with
             {
                 CleanedTranscript = cleaned.Text,
@@ -363,18 +366,22 @@ public sealed class DictationController : IDisposable
     }
 
     internal static async Task<CleanTranscriptResult> CleanWithFallbackAsync(ITranscriptCleaner cleaner, RawTranscript raw, TranscriptStyle style, CancellationToken token) =>
-        (await CleanWithFallbackStatusAsync(cleaner, raw, style, token)).Result;
+        (await CleanWithFallbackStatusAsync(cleaner, raw, style, null, token)).Result;
 
-    private static async Task<(CleanTranscriptResult Result, bool UsedFallback)> CleanWithFallbackStatusAsync(
-        ITranscriptCleaner cleaner, RawTranscript raw, TranscriptStyle style, CancellationToken token)
+    internal static async Task<(CleanTranscriptResult Result, bool UsedFallback)> CleanWithFallbackStatusAsync(
+        ITranscriptCleaner cleaner, RawTranscript raw, TranscriptStyle style, CodingTarget? codingTarget, CancellationToken token)
     {
         if (string.IsNullOrWhiteSpace(raw.Text)) throw new InvalidOperationException("Speech recognition returned an empty transcript.");
         for (var attempt = 0; attempt < 2; attempt++)
         {
             try
             {
-                var cleaned = await cleaner.CleanAsync(raw, style, token);
-                if (CleanupResultValidator.TryValidate(raw, cleaned, out _)) return (cleaned, false);
+                var cleaned = codingTarget is not null && cleaner is SottoTranscriptCleaner resident
+                    ? await resident.CleanCodingAsync(raw, style, codingTarget, PromptPolicyRegistry.Default.Get(codingTarget), token)
+                    : await cleaner.CleanAsync(raw, style, token);
+                if (CleanupResultValidator.TryValidate(raw, cleaned, out _) &&
+                    (codingTarget is null || CodingCleanupValidator.PreservesSubstantiveWords(raw, cleaned)))
+                    return (cleaned, false);
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
             catch when (attempt == 0) { continue; }
@@ -520,6 +527,7 @@ public sealed class DictationController : IDisposable
         _target = null;
         CurrentContext = null;
         CurrentClassification = null;
+        CurrentCodingTarget = null;
         _style = DefaultStyle;
         _recordingPath = null;
         _sessionOptions = null;

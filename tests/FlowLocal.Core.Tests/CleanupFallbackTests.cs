@@ -56,6 +56,23 @@ public sealed class CleanupFallbackTests
     }
 
     [Fact]
+    public async Task CodingValidationFailure_RetriesThenReturnsExactRawText()
+    {
+        var raw = new RawTranscript("do not delete src/auth.ts");
+        var cleaner = new SequenceCleaner(
+            new CleanTranscriptResult("delete src/auth.ts"),
+            new CleanTranscriptResult("delete src/auth.ts"));
+        var target = new CodingTarget("Windows Terminal / Claude Code", "future-model", "medium", "test");
+
+        var result = await DictationController.CleanWithFallbackStatusAsync(
+            cleaner, raw, Style, target, CancellationToken.None);
+
+        Assert.Equal(raw.Text, result.Result.Text);
+        Assert.True(result.UsedFallback);
+        Assert.Equal(2, cleaner.Calls);
+    }
+
+    [Fact]
     public async Task Cancellation_IsNotRetriedOrConvertedToFallback()
     {
         using var cancellation = new CancellationTokenSource();

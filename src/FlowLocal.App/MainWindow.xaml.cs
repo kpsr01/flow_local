@@ -8,6 +8,7 @@ using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Media;
 using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Input;
@@ -36,12 +37,13 @@ public partial class MainWindow : Window
 {
     private static readonly NavEntry[] NavEntries =
     [
-        new("general", "General", "Recording behaviour and hands-free activation.", "\uE713"),
-        new("shortcuts", "Shortcuts", "Choose the modifiers that activate push-to-talk.", "\uE765"),
-        new("microphone", "Microphone", "Follow the Windows default input or pin a device.", "\uE720"),
-        new("styles", "Application styles", "Detect the current target and shape its writing style.", "\uE790"),
-        new("privacy", "History and privacy", "Everything stays on this machine until you delete it.", "\uE81C"),
-        new("diagnostics", "Models and diagnostics", "Live status of the local speech stack.", "\uE9D9")
+        new("general", "Get started", "Start dictating and choose how recordings behave.", "\uE768"),
+        new("history", "History", "Find, review, copy, and recover past dictations.", "\uE81C"),
+        new("shortcuts", "Keyboard shortcut", "Choose the keys that activate push-to-talk.", "\uE765"),
+        new("microphone", "Microphone", "Use the Windows default input or choose a device.", "\uE720"),
+        new("styles", "Writing style", "Adapt dictation to the current application or website.", "\uE790"),
+        new("privacy", "Privacy & storage", "Control local recordings, retention, and deletion.", "\uE72E"),
+        new("diagnostics", "System status", "Check local speech models, runtime, and installation.", "\uE9D9")
     ];
 
     private IStyleOverrideStore? _store;
@@ -90,6 +92,9 @@ public partial class MainWindow : Window
     public void Navigate(string key)
     {
         var entry = NavEntries.FirstOrDefault(candidate => candidate.Key == key) ?? NavEntries[0];
+        var history = entry.Key == "history";
+        SettingsScroll.Visibility = history ? Visibility.Collapsed : Visibility.Visible;
+        PageHistory.Visibility = history ? Visibility.Visible : Visibility.Collapsed;
         PageGeneral.Visibility = entry.Key == "general" ? Visibility.Visible : Visibility.Collapsed;
         PageShortcuts.Visibility = entry.Key == "shortcuts" ? Visibility.Visible : Visibility.Collapsed;
         PageMicrophone.Visibility = entry.Key == "microphone" ? Visibility.Visible : Visibility.Collapsed;
@@ -98,6 +103,7 @@ public partial class MainWindow : Window
         PageDiagnostics.Visibility = entry.Key == "diagnostics" ? Visibility.Visible : Visibility.Collapsed;
         PageTitle.Text = entry.Title;
         PageSubtitle.Text = entry.Subtitle;
+        if (!history) SettingsScroll.ScrollToTop();
         if (NavList.SelectedItem is not NavEntry selected || selected.Key != entry.Key)
         {
             NavList.SelectedItem = NavEntries.First(candidate => candidate.Key == entry.Key);
@@ -169,8 +175,10 @@ public partial class MainWindow : Window
             MicDeviceComboBox.SelectedValuePath = nameof(MicrophoneDeviceInfo.Id);
             await PopulateMicrophonesAsync(settings.PreferredMicrophoneDeviceId);
             MicDeviceComboBox.IsEnabled = settings.FollowDefaultMicrophone == false;
+            ShortcutSummaryText.Text = FormatChord(settings.ShortcutModifiers).Replace("+", " + ");
             ShortcutStatusText.Text = $"Push-to-talk chord: {FormatChord(settings.ShortcutModifiers)}.";
-            GeneralStatusText.Text = "General settings loaded.";        }
+            GeneralStatusText.Text = "Ready to dictate.";
+        }
         finally { _loading = false; }
         RefreshRuntimeDiagnostics();
     }
@@ -237,6 +245,7 @@ public partial class MainWindow : Window
         }
 
         await SaveAppSettingsAsync(BuildAppSettingsFromUi() with { ShortcutModifiers = chord });
+        ShortcutSummaryText.Text = string.Join(" + ", chord);
         ShortcutStatusText.Text = $"Push-to-talk chord: {string.Join("+", chord)}.";
     }
 
@@ -323,7 +332,7 @@ public partial class MainWindow : Window
     {
         Show();
         Activate();
-        Navigate("privacy");
+        Navigate("history");
         HistoryGroupBox.BringIntoView();
         if (selectedId is { } id)
         {
@@ -477,6 +486,7 @@ public partial class MainWindow : Window
         HistoryApplicationComboBox.ItemsSource = applications;
         HistoryApplicationComboBox.SelectedItem = applications.FirstOrDefault(item => string.Equals(item.Value, application, StringComparison.OrdinalIgnoreCase)) ?? applications[0];
         _loading = false;
+        HistoryEmptyText.Visibility = items.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
         HistoryListBox.SelectedItem = items.FirstOrDefault(item => item.Entry.Id == selectedId) ?? items.FirstOrDefault();
         if (items.Length == 0) HistoryStatusText.Text = "No history matches these filters.";
     }
@@ -606,6 +616,25 @@ public partial class MainWindow : Window
         .OrderBy(item => item.Kind).ThenBy(item => item.Key).ToArray();
 
     private void RefreshDiagnostics_Click(object sender, RoutedEventArgs e) => RefreshRuntimeDiagnostics();
+
+    private void Window_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        if (PageHistory.Visibility == Visibility.Visible) return;
+        var nestedScroll = FindAncestor<ScrollViewer>(e.OriginalSource as DependencyObject);
+        if (nestedScroll is not null && !ReferenceEquals(nestedScroll, SettingsScroll)) return;
+        SettingsScroll.ScrollToVerticalOffset(SettingsScroll.VerticalOffset - (e.Delta / 3d));
+        e.Handled = true;
+    }
+
+    private static T? FindAncestor<T>(DependencyObject? child) where T : DependencyObject
+    {
+        while (child is not null)
+        {
+            if (child is T match) return match;
+            child = VisualTreeHelper.GetParent(child);
+        }
+        return null;
+    }
 
     private static string FormatChord(IReadOnlyList<string>? chord) =>
         chord is null || chord.Count == 0 ? "Ctrl+Win" : string.Join("+", chord);

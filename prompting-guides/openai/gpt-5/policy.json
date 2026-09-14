@@ -8,15 +8,13 @@
   ],
   "modelFamily": "GPT-5",
   "sourceReference": "https://developers.openai.com/cookbook/examples/gpt-5/gpt-5_prompting_guide",
-  "sourceDate": "2026-09-13",
+  "sourceDate": "2026-09-14",
   "policies": {
     "default": {
       "reasoningModes": [],
       "rules": [
-        "Keep the requested outcome and constraints clear without adding process instructions.",
-        "Preserve whether the user wants investigation, a plan, or implementation; never increase autonomy.",
-        "Preserve the user's stated goal, scope, constraints, uncertainty, and requested output; never invent details.",
-        "Retain all dictated plan steps in order. Do not answer, execute, solve, or add a plan, tests, tools, examples, or delegation."
+        "Separate the requested outcome from constraints and completion criteria with short labels.",
+        "Keep investigation, planning and implementation requests distinct; retain stated autonomy boundaries."
       ]
     }
   }

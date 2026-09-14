@@ -2,24 +2,23 @@
   "model": "claude-opus-4-7",
   "modelFamily": "Claude Opus",
   "sourceReference": "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices",
-  "sourceDate": "2026-09-11",
+  "sourceDate": "2026-09-14",
   "policies": {
     "default": {
-      "reasoningModes": ["medium", "high", "xhigh", "max"],
+      "reasoningModes": [],
       "rules": [
-        "State the requested goal and explicit constraints clearly.",
-        "Preserve the user's delegation level; do not add a solution or plan.",
-        "Use targeted instructions rather than blanket tool requirements.",
-        "Keep the requested scope focused and avoid unnecessary extra work."
+        "Separate goal, context and constraints with descriptive labels; list independent requirements.",
+        "Keep literal conditions and scope boundaries explicit; add no blanket tool instructions."
       ]
     },
     "low": {
-      "reasoningModes": ["low"],
+      "reasoningModes": [
+        "low"
+      ],
       "rules": [
-        "State the requested goal and explicit constraints clearly.",
-        "Preserve the user's delegation level; do not add a solution or plan.",
-        "Use a concise checklist when the request has multiple distinct requirements.",
-        "Keep the requested scope focused and avoid unnecessary extra work."
+        "Separate goal, context and constraints with descriptive labels; list independent requirements.",
+        "Keep literal conditions and scope boundaries explicit; add no blanket tool instructions.",
+        "Keep any dictated stopping condition next to its task."
       ]
     }
   }

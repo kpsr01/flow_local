@@ -32,15 +32,13 @@
   ],
   "modelFamily": "OpenAI text models",
   "sourceReference": "https://developers.openai.com/api/docs/guides/prompt-engineering",
-  "sourceDate": "2026-09-13",
+  "sourceDate": "2026-09-14",
   "policies": {
     "default": {
       "reasoningModes": [],
       "rules": [
-        "Use clear, direct instructions and separate existing context, requirements, and output preferences with paragraphs or bullets.",
-        "Apply general OpenAI guidance only; do not infer model-specific capabilities or introduce missing examples.",
-        "Preserve the user's stated goal, scope, constraints, uncertainty, and requested output; never invent details.",
-        "Retain all dictated plan steps in order. Do not answer, execute, solve, or add a plan, tests, tools, examples, or delegation."
+        "Use short labelled sections for mixed goals, context, constraints and requested output.",
+        "Keep each independent requirement on its own line; retain conditions and requested detail."
       ]
     }
   }

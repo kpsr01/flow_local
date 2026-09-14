@@ -20,7 +20,7 @@ The cleanup stage uses Liquid AI's [LFM2.5-1.2B-Instruct-GGUF](https://huggingfa
 
 When running from source, the target model is discovered at `%LOCALAPPDATA%\FlowLocal\Models\LFM2.5-1.2B-Instruct-QAD-Q4_0.gguf` or supplied with `FLOWLOCAL_CLEANUP_MODEL_PATH`. The DSpark sidecar can be supplied with `FLOWLOCAL_CLEANUP_DSPARK_MODEL_PATH`; the server executable can be overridden with `FLOWLOCAL_LLAMA_SERVER_PATH`.
 
-The app starts one resident `llama-server.exe` process, uses a deterministic LFM chat prompt, temperature 0, top-k 1, top-p 1, repetition penalty 1.05, a 2048-token context, and streams completion tokens. It records prefill, time-to-first-token, decode, completion, resident-memory, and DSpark draft/accepted-token metrics. The packaged server is CPU-only; `FLOWLOCAL_CLEANUP_DSPARK=1` enables `draft-dspark` speculative decoding.
+The app starts one resident `llama-server.exe` process, uses a deterministic LFM chat prompt, temperature 0, top-k 1, top-p 1, repetition penalty 1.05, a 2048-token context, and streams completion tokens. Startup warms the shared coding-instruction prefix; llama.cpp checkpoints reuse it across target-model policies. It records prefill, time-to-first-token, decode, completion, resident-memory, and DSpark draft/accepted-token metrics. The packaged server is CPU-only; `FLOWLOCAL_CLEANUP_DSPARK=1` enables `draft-dspark` speculative decoding.
 
 ## Codex and Claude Code prompt formatting
 
@@ -30,7 +30,7 @@ The bundled adapters remain an optional fallback for terminal hosts that do not 
 
 Detection does not depend on the guide catalog. Known IDs select the stored official-guide adaptation; unlisted models use the built-in general rewrite-only policy. Missing metadata stays explicitly unknown rather than being guessed from a project title or global default.
 
-The local LFM model only formats the dictated request. Coding cleanup uses llama.cpp constrained decoding to retain substantive words, order, case, identifiers, constraints, and dictated plan steps, while allowing punctuation, line breaks, bullets, and leading-filler removal. It cannot generate an answer, code, a solution, or additional plan steps. Validation remains in place; a failed or truncated completion falls back to the raw transcript. History cleanup retries use the saved coding target, not whichever harness happens to be active later.
+The local LFM model only formats the dictated request. Coding cleanup uses llama.cpp constrained decoding to retain substantive words, order, case, identifiers, constraints, and dictated plan steps, while allowing punctuation, line breaks, bullets, concise section labels for mixed requests, and leading-filler removal. It cannot generate an answer, code, a solution, or additional plan steps. Validation remains in place; a failed or truncated completion immediately falls back to the raw transcript instead of repeating the same deterministic inference. History cleanup retries use the saved coding target, not whichever harness happens to be active later.
 
 Settings → History shows the captured **harness, coding model, and effort**, alongside the ASR and cleanup model. Older rows remain readable; unavailable detection metadata is shown as unknown rather than inferred retroactively.
 

@@ -32,9 +32,17 @@ public sealed class SottoTranscriptCleaner : ITranscriptCleaner, ICleanupBackend
     private readonly SemaphoreSlim initializationLock = new(1, 1);
     private readonly SemaphoreSlim inferenceLock = new(1, 1);
     private readonly HttpClient http = new() { Timeout = Timeout.InfiniteTimeSpan };
+    private static readonly object[] MessageDelimiters =
+    [
+        new { role = "system", delimiter = "<|im_start|>system\n" },
+        new { role = "user", delimiter = "<policy>\n" },
+        new { role = "user", delimiter = "<|im_start|>user\n" },
+        new { role = "assistant", delimiter = "<|im_start|>assistant\n" }
+    ];
     private Process? server;
     private IntPtr serverJob;
     private bool disposed;
+    private bool warmed;
 
     public string BackendId => DsparkEnabled ? "lfm25-1.2b-qad-q4_0-dspark-q4_k_m" : "lfm25-1.2b-qad-q4_0";
     public string DisplayName => DsparkEnabled
@@ -51,6 +59,7 @@ public sealed class SottoTranscriptCleaner : ITranscriptCleaner, ICleanupBackend
         try
         {
             await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
+            await WarmUpAsync(cancellationToken).ConfigureAwait(false);
             return new BackendAvailability(true);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
@@ -66,7 +75,7 @@ public sealed class SottoTranscriptCleaner : ITranscriptCleaner, ICleanupBackend
     internal Task<CleanTranscriptResult> CleanCodingAsync(
         RawTranscript transcript, TranscriptStyle style, CodingTarget target, PromptingPolicy policy,
         CancellationToken cancellationToken) =>
-        CleanCoreAsync(transcript, DictationPromptAdapter.Build(transcript, target, policy), cancellationToken,
+        CleanCoreAsync(transcript, DictationPromptAdapter.Build(transcript, policy), cancellationToken,
             CodingCleanupValidator.CreateFormattingGrammar(transcript));
 
     private async Task<CleanTranscriptResult> CleanCoreAsync(
@@ -84,14 +93,15 @@ public sealed class SottoTranscriptCleaner : ITranscriptCleaner, ICleanupBackend
                 {
                     prompt,
                     grammar = grammar ?? "",
-                    n_predict = Math.Clamp(transcript.Text.Length / 2, 32, 256),
+                    n_predict = Math.Clamp(transcript.Text.Length / 2 + 64, 64, 512),
                     temperature = 0,
                     top_k = 1,
                     top_p = 1,
                     repeat_penalty = 1.05,
                     stop = new[] { "<|im_end|>", "<|endoftext|>" },
                     stream = true,
-                    cache_prompt = false,
+                    cache_prompt = true,
+                    message_delimiters = MessageDelimiters,
                     return_tokens = false
                 })
             };
@@ -151,6 +161,28 @@ public sealed class SottoTranscriptCleaner : ITranscriptCleaner, ICleanupBackend
         finally { inferenceLock.Release(); }
     }
 
+    private async Task WarmUpAsync(CancellationToken cancellationToken)
+    {
+        if (warmed) return;
+        await inferenceLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (warmed) return;
+            var target = new CodingTarget("warmup", null, null, "warmup");
+            using var response = await http.PostAsJsonAsync($"http://127.0.0.1:{Port}/completion", new
+            {
+                prompt = DictationPromptAdapter.Build(new RawTranscript("warm up"), PromptPolicyRegistry.Generic(target)),
+                n_predict = 1,
+                temperature = 0,
+                cache_prompt = true,
+                message_delimiters = MessageDelimiters
+            }, cancellationToken).ConfigureAwait(false);
+            response.EnsureSuccessStatusCode();
+            warmed = true;
+        }
+        finally { inferenceLock.Release(); }
+    }
+
     private async Task EnsureInitializedAsync(CancellationToken cancellationToken)
     {
         if (IsLoaded) return;
@@ -177,6 +209,8 @@ public sealed class SottoTranscriptCleaner : ITranscriptCleaner, ICleanupBackend
             Add(info, "--threads", Math.Max(1, Math.Min(4, Environment.ProcessorCount / 2)).ToString());
             Add(info, "--threads-batch", Math.Max(1, Math.Min(4, Environment.ProcessorCount / 2)).ToString());
             Add(info, "--ctx-size", "2048"); Add(info, "--parallel", "1"); AddFlag(info, "--no-webui"); AddFlag(info, "--metrics");
+            Add(info, "--ctx-checkpoints", "4");
+            Add(info, "--checkpoint-min-step", "64");
             Add(info, "--temp", "0"); Add(info, "--top-k", "1"); Add(info, "--top-p", "1");
             Add(info, "--reasoning-budget", "0"); AddFlag(info, "--log-disable");
             if (DsparkEnabled)
@@ -246,6 +280,7 @@ public sealed class SottoTranscriptCleaner : ITranscriptCleaner, ICleanupBackend
         try { if (server is { HasExited: false }) server.Kill(entireProcessTree: true); } catch { }
         server?.Dispose();
         server = null;
+        warmed = false;
         if (serverJob != IntPtr.Zero)
         {
             CloseHandle(serverJob);

@@ -162,6 +162,35 @@ public sealed class CodingPromptPolicyTests
     }
 
     [Fact]
+    public void FormattingAllowsModelGuideHeadingsWithoutChangingTheRequest()
+    {
+        var raw = new RawTranscript(
+            "fix the parser in src/parser.ts keep --no-cache unchanged do not change the public API return a short summary");
+        var formatted = new CleanTranscriptResult(
+            "Task:\nfix the parser in src/parser.ts\n\nConstraints:\nkeep --no-cache unchanged.\ndo not change the public API.\n\nOutput:\nreturn a short summary.");
+
+        Assert.True(CodingCleanupValidator.PreservesSubstantiveWords(raw, formatted));
+        var grammar = CodingCleanupValidator.CreateFormattingGrammar(raw);
+        Assert.Contains("\"Task:\\n\"", grammar);
+        Assert.Contains("\"Constraints:\\n\"", grammar);
+        Assert.DoesNotContain("\"Task:\\n\"",
+            CodingCleanupValidator.CreateFormattingGrammar(new RawTranscript("fix src/auth.ts")));
+        Assert.Contains("\"Output:\\n\"", grammar);
+    }
+
+    [Fact]
+    public void CodingPromptUsesSelectedModelGuideWithoutFewShotOverhead()
+    {
+        var target = new CodingTarget("Windows Terminal / Codex", "gpt-5.3-codex", "medium", "test");
+        var prompt = DictationPromptAdapter.Build(new RawTranscript("fix src/auth.ts"),
+            PromptPolicyRegistry.Default.Get(target));
+
+        Assert.Contains("Prefer a direct task followed by requirement bullets", prompt);
+        Assert.Contains("fix src/auth.ts", prompt);
+        Assert.DoesNotContain("uh inspect src/auth.ts", prompt);
+    }
+
+    [Fact]
     public void ClaudeExtendedContextKeepsFullIdentityAndUsesItsBaseModelGuide()
     {
         var now = DateTimeOffset.UtcNow;

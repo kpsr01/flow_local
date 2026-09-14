@@ -20,48 +20,44 @@ public sealed class CleanupFallbackTests
     }
 
     [Fact]
-    public async Task CleanupFailure_RetriesOnce_ThenFallsBackToRawText()
+    public async Task CleanupFailure_FallsBackToRawTextWithoutDeterministicRetry()
     {
-        var cleaner = new SequenceCleaner(
-            new InvalidOperationException("first failure"),
-            new InvalidOperationException("second failure"));
+        var cleaner = new SequenceCleaner(new InvalidOperationException("failure"));
 
         var result = await DictationController.CleanWithFallbackAsync(cleaner, Raw, Style, CancellationToken.None);
 
         Assert.Equal(Raw.Text, result.Text);
-        Assert.Equal(2, cleaner.Calls);
+        Assert.Equal(1, cleaner.Calls);
     }
 
     [Fact]
-    public async Task InvalidCleanup_RetriesOnce_ThenFallsBackToRawText()
+    public async Task InvalidCleanup_FallsBackToRawTextWithoutDeterministicRetry()
     {
-        var cleaner = new SequenceCleaner(new CleanTranscriptResult(""), new CleanTranscriptResult("  "));
+        var cleaner = new SequenceCleaner(new CleanTranscriptResult(""));
 
         var result = await DictationController.CleanWithFallbackAsync(cleaner, Raw, Style, CancellationToken.None);
 
         Assert.Equal(Raw.Text, result.Text);
-        Assert.Equal(2, cleaner.Calls);
+        Assert.Equal(1, cleaner.Calls);
     }
 
     [Fact]
-    public async Task ValidatorRejectedCleanup_RetriesOnce_ThenFallsBackToRawText()
+    public async Task ValidatorRejectedCleanup_FallsBackToRawTextWithoutDeterministicRetry()
     {
         var invalid = new CleanTranscriptResult("<|assistant|> invented output");
-        var cleaner = new SequenceCleaner(invalid, invalid);
+        var cleaner = new SequenceCleaner(invalid);
 
         var result = await DictationController.CleanWithFallbackAsync(cleaner, Raw, Style, CancellationToken.None);
 
         Assert.Equal(Raw.Text, result.Text);
-        Assert.Equal(2, cleaner.Calls);
+        Assert.Equal(1, cleaner.Calls);
     }
 
     [Fact]
-    public async Task CodingValidationFailure_RetriesThenReturnsExactRawText()
+    public async Task CodingValidationFailure_ReturnsExactRawTextWithoutDeterministicRetry()
     {
         var raw = new RawTranscript("do not delete src/auth.ts");
-        var cleaner = new SequenceCleaner(
-            new CleanTranscriptResult("delete src/auth.ts"),
-            new CleanTranscriptResult("delete src/auth.ts"));
+        var cleaner = new SequenceCleaner(new CleanTranscriptResult("delete src/auth.ts"));
         var target = new CodingTarget("Windows Terminal / Claude Code", "future-model", "medium", "test");
 
         var result = await DictationController.CleanWithFallbackStatusAsync(
@@ -69,7 +65,7 @@ public sealed class CleanupFallbackTests
 
         Assert.Equal(raw.Text, result.Result.Text);
         Assert.True(result.UsedFallback);
-        Assert.Equal(2, cleaner.Calls);
+        Assert.Equal(1, cleaner.Calls);
     }
 
     [Fact]

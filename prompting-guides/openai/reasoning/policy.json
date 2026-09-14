@@ -13,15 +13,13 @@
   ],
   "modelFamily": "OpenAI reasoning",
   "sourceReference": "https://developers.openai.com/api/docs/guides/reasoning-best-practices",
-  "sourceDate": "2026-09-13",
+  "sourceDate": "2026-09-14",
   "policies": {
     "default": {
       "reasoningModes": [],
       "rules": [
-        "Use simple, direct statements and separate the goal from existing constraints.",
-        "Do not introduce chain-of-thought or step-by-step reasoning requests; preserve steps only when dictated.",
-        "Preserve the user's stated goal, scope, constraints, uncertainty, and requested output; never invent details.",
-        "Retain all dictated plan steps in order. Do not answer, execute, solve, or add a plan, tests, tools, examples, or delegation."
+        "Use direct task statements and labelled constraints; prefer zero-shot instructions without added examples.",
+        "Keep dictated steps, but introduce no think-step-by-step or reasoning requests."
       ]
     }
   }

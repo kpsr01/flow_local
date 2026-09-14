@@ -1,17 +1,27 @@
 {
   "model": "claude-fable-5-1",
-  "models": [],
+  "models": [
+    "claude-mythos-5-1"
+  ],
   "modelFamily": "Claude Fable 5.1",
   "sourceReference": "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-fable-5-1",
-  "sourceDate": "2026-09-13",
+  "sourceDate": "2026-09-14",
   "policies": {
     "default": {
       "reasoningModes": [],
       "rules": [
-        "Keep the complete dictated request clear and literal; retain stated boundaries and output preferences.",
-        "Separate distinct requirements without expanding the scope or adding process, verification, or delegation instructions.",
-        "Preserve the user's stated goal, scope, constraints, uncertainty, and requested output; never invent details.",
-        "Retain all dictated plan steps in order. Do not answer, execute, solve, or add a plan, tests, tools, examples, or delegation."
+        "Use readable, concise sections for the task, context, constraints and output; prefer full phrases over shorthand.",
+        "Keep explicit scope and output-format requests prominent; add no reasoning narration."
+      ]
+    },
+    "low": {
+      "reasoningModes": [
+        "low"
+      ],
+      "rules": [
+        "Use readable, concise sections for the task, context, constraints and output; prefer full phrases over shorthand.",
+        "Keep explicit scope and output-format requests prominent; add no reasoning narration.",
+        "Keep explicitly requested search or retrieval actions visible."
       ]
     }
   }

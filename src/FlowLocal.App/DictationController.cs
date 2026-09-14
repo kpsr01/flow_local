@@ -376,21 +376,18 @@ public sealed class DictationController : IDisposable
         ITranscriptCleaner cleaner, RawTranscript raw, TranscriptStyle style, CodingTarget? codingTarget, CancellationToken token)
     {
         if (string.IsNullOrWhiteSpace(raw.Text)) throw new InvalidOperationException("Speech recognition returned an empty transcript.");
-        for (var attempt = 0; attempt < 2; attempt++)
+        try
         {
-            try
-            {
-                var cleaned = codingTarget is not null && cleaner is SottoTranscriptCleaner resident
-                    ? await resident.CleanCodingAsync(raw, style, codingTarget, PromptPolicyRegistry.Default.Get(codingTarget), token)
-                    : await cleaner.CleanAsync(raw, style, token);
-                if (CleanupResultValidator.TryValidate(raw, cleaned, out _) &&
-                    (codingTarget is null || CodingCleanupValidator.PreservesSubstantiveWords(raw, cleaned)))
-                    return (cleaned, false);
-            }
-            catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
-            catch when (attempt == 0) { continue; }
-            catch { break; }
+            var cleaned = codingTarget is not null && cleaner is SottoTranscriptCleaner resident
+                ? await resident.CleanCodingAsync(raw, style, codingTarget, PromptPolicyRegistry.Default.Get(codingTarget), token)
+                : await cleaner.CleanAsync(raw, style, token);
+            if (CleanupResultValidator.TryValidate(raw, cleaned, out _) &&
+                (codingTarget is null || CodingCleanupValidator.PreservesSubstantiveWords(raw, cleaned)))
+                return (cleaned, false);
         }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
+        // Deterministic retries repeat invalid output and double the insertion delay.
+        catch { }
         return (new CleanTranscriptResult(raw.Text), true);
     }
 

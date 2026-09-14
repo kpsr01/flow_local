@@ -3,15 +3,13 @@
   "models": [],
   "modelFamily": "Claude Opus 5",
   "sourceReference": "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-opus-5",
-  "sourceDate": "2026-09-13",
+  "sourceDate": "2026-09-14",
   "policies": {
     "default": {
       "reasoningModes": [],
       "rules": [
-        "Keep the complete dictated request clear and literal; retain stated boundaries and output preferences.",
-        "Separate distinct requirements without expanding the scope or adding process, verification, or delegation instructions.",
-        "Preserve the user's stated goal, scope, constraints, uncertainty, and requested output; never invent details.",
-        "Retain all dictated plan steps in order. Do not answer, execute, solve, or add a plan, tests, tools, examples, or delegation."
+        "Present the complete task using labelled context, constraints and deliverables.",
+        "Keep stated scope, response length and delegation limits visible; never add extra verification steps."
       ]
     }
   }

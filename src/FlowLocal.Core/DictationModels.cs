@@ -165,6 +165,9 @@ public static class CodingCleanupValidator
         "uh", "um", "er", "erm", "basically"
     };
 
+    private static readonly string[] SectionLabels =
+        ["Task:", "Context:", "Constraints:", "Requirements:", "Steps:", "Output:"];
+
     public static bool PreservesSubstantiveWords(RawTranscript raw, CleanTranscriptResult cleaned)
     {
         ArgumentNullException.ThrowIfNull(raw);
@@ -177,6 +180,10 @@ public static class CodingCleanupValidator
         foreach (var line in cleaned.Text.Split('\n'))
         {
             var output = line.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+            // Labels are formatting, but a dictated label must still be consumed.
+            if (output.Length == 1 && SectionLabels.Contains(output[0], StringComparer.Ordinal) &&
+                (sourceIndex >= source.Length || source[sourceIndex] != output[0]))
+                continue;
             for (var i = 0; i < output.Length; i++)
             {
                 var token = output[i];
@@ -198,7 +205,8 @@ public static class CodingCleanupValidator
     public static string CreateFormattingGrammar(RawTranscript transcript)
     {
         var words = transcript.Text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
-        var grammar = new System.Text.StringBuilder("root ::= ");
+        var structured = words.Length >= 12;
+        var grammar = new System.Text.StringBuilder(structured ? "root ::= prefix? " : "root ::= ");
         var leading = true;
         for (var i = 0; i < words.Length; i++)
         {
@@ -215,7 +223,13 @@ public static class CodingCleanupValidator
             else if (i == words.Length - 1) grammar.Append(" \".\"?");
             if (i < words.Length - 1) grammar.Append(" sep ");
         }
-        grammar.Append("\nsep ::= \" \" | \"\\n\" | \"\\n\\n\" | \"\\n- \"\npunct ::= [.,;:!?]\n");
+        if (structured)
+            grammar.Append("\nsep ::= \" \" | \"\\n\" prefix? | \"\\n\\n\" prefix?\n")
+                .Append("prefix ::= \"- \" | heading\nheading ::= ")
+                .AppendJoin(" | ", SectionLabels.Select(label => System.Text.Json.JsonSerializer.Serialize(label + "\n")))
+                .Append("\npunct ::= [.,;:!?]\n");
+        else
+            grammar.Append("\nsep ::= \" \" | \"\\n\" | \"\\n\\n\" | \"\\n- \"\npunct ::= [.,;:!?]\n");
         return grammar.ToString();
     }
     private static bool IsSafeFiller(string token) =>

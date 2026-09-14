@@ -10,15 +10,13 @@
   ],
   "modelFamily": "OpenAI Codex",
   "sourceReference": "https://developers.openai.com/cookbook/examples/gpt-5/codex_prompting_guide",
-  "sourceDate": "2026-09-13",
+  "sourceDate": "2026-09-14",
   "policies": {
     "default": {
       "reasoningModes": [],
       "rules": [
-        "Keep the request concise and direct; do not add role prompts, preambles, or agent workflow scaffolding.",
-        "Separate existing requirements with paragraphs or bullets only when useful; leave tool use and execution to the coding harness.",
-        "Preserve the user's stated goal, scope, constraints, uncertainty, and requested output; never invent details.",
-        "Retain all dictated plan steps in order. Do not answer, execute, solve, or add a plan, tests, tools, examples, or delegation."
+        "Prefer a direct task followed by requirement bullets; avoid unnecessary headings on short requests.",
+        "Keep dictated scope and completion criteria explicit; add no agent workflow or reasoning instructions."
       ]
     }
   }

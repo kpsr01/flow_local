@@ -559,6 +559,8 @@ public partial class MainWindow : Window
     {
         var uninstaller = Path.Combine(AppContext.BaseDirectory, "unins000.exe");
         if (!File.Exists(uninstaller))
+            uninstaller = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "unins000.exe"));
+        if (!File.Exists(uninstaller))
         {
             UninstallStatusText.Text = "This copy was not installed by the FlowLocal setup program; there is nothing to uninstall.";
             return;

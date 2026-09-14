@@ -7,15 +7,10 @@ using FlowLocal.Core;
 
 namespace FlowLocal.App;
 
-/// <summary>Online update check: fetches a hosted manifest, downloads the newer installer, verifies it, runs it.</summary>
-/// <remarks>
-/// Point <see cref="ManifestUrl"/> at the real hosted latest.json (GitHub Releases
-/// ".../releases/latest/download/latest.json" redirects to the newest release asset).
-/// </remarks>
+/// <summary>Checks GitHub Releases, downloads a newer installer, verifies it, and launches it.</summary>
 public static class UpdateService
 {
-    // TODO: replace YOUR-USER with the real releases host before shipping.
-    public const string ManifestUrl = "https://github.com/YOUR-USER/FlowLocal/releases/latest/download/latest.json";
+    public const string ManifestUrl = "https://github.com/kpsr01/flow_local/releases/latest/download/latest.json";
 
     // Infinite overall timeout: it would also bound streaming reads of the large installer download.
     private static readonly HttpClient Http = new() { Timeout = Timeout.InfiniteTimeSpan };
@@ -53,7 +48,7 @@ public static class UpdateService
         }
     }
 
-    /// <summary>Downloads the installer to a temp file, verifying the manifest SHA-256 when present.</summary>
+    /// <summary>Downloads the installer to a temp file and verifies its required SHA-256.</summary>
     public static async Task<string> DownloadAsync(UpdateManifest manifest, CancellationToken cancellationToken = default)
     {
         var target = Path.Combine(Path.GetTempPath(), $"FlowLocal-update-{manifest.Version}-setup.exe");
@@ -74,9 +69,8 @@ public static class UpdateService
                     sha.TransformBlock(buffer, 0, read, null, 0);
                 }
                 sha.TransformFinalBlock(Array.Empty<byte>(), 0, 0);
-                if (manifest.Sha256 is { } expected
-                    && !Convert.ToHexString(sha.Hash ?? []).Equals(
-                        expected.Replace("-", "").Trim(), StringComparison.OrdinalIgnoreCase))
+                if (!Convert.ToHexString(sha.Hash ?? []).Equals(
+                        manifest.Sha256, StringComparison.OrdinalIgnoreCase))
                 {
                     throw new IOException("The downloaded update failed its integrity check.");
                 }
@@ -90,14 +84,18 @@ public static class UpdateService
         }
     }
 
-    /// <summary>Launches the downloaded installer silently; the caller should exit right after.</summary>
+    /// <summary>Starts the installer after this process has had time to release its files.</summary>
     public static void Apply(string installerPath)
     {
+        installerPath = Path.GetFullPath(installerPath);
+        if (!File.Exists(installerPath)) throw new FileNotFoundException("The update installer was not found.", installerPath);
         using var process = Process.Start(new ProcessStartInfo
         {
-            FileName = installerPath,
-            Arguments = "/SILENT /SUPPRESSMSGBOXES",
-            UseShellExecute = true
+            FileName = Environment.GetEnvironmentVariable("ComSpec") ?? "cmd.exe",
+            Arguments = "/d /c timeout /t 2 /nobreak >nul & start \"\" \"" + installerPath +
+                        "\" /SILENT /SUPPRESSMSGBOXES /SP- /NORESTART /CLOSEAPPLICATIONS /FORCECLOSEAPPLICATIONS",
+            CreateNoWindow = true,
+            UseShellExecute = false
         });
         if (process is null) throw new InvalidOperationException("The update installer could not be started.");
     }

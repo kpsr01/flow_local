@@ -368,8 +368,9 @@ public partial class App : Application
         // Delayed start: let this process and the ASR worker exit and release files before deletion.
         Process.Start(new ProcessStartInfo
         {
-            FileName = "cmd.exe",
-            Arguments = "/c timeout /t 2 /nobreak >nul & start \"\" \"" + uninstaller + "\" /SILENT /SUPPRESSMSGBOXES",
+            FileName = Environment.GetEnvironmentVariable("ComSpec") ?? "cmd.exe",
+            Arguments = "/d /c timeout /t 2 /nobreak >nul & start \"\" \"" + uninstaller +
+                        "\" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CLOSEAPPLICATIONS /FORCECLOSEAPPLICATIONS",
             CreateNoWindow = true,
             UseShellExecute = false
         });

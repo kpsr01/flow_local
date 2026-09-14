@@ -3,11 +3,11 @@ using System.Text.Json;
 namespace FlowLocal.Core;
 
 /// <summary>Hosted update manifest (latest.json): the newest released version and its installer.</summary>
-public sealed record UpdateManifest(string Version, string Url, string? Sha256)
+public sealed record UpdateManifest(string Version, string Url, string Sha256)
 {
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
 
-    /// <summary>Parses the manifest JSON; returns null when malformed or missing required fields.</summary>
+    /// <summary>Parses and validates the release manifest at the network trust boundary.</summary>
     public static UpdateManifest? TryParse(string json)
     {
         if (string.IsNullOrWhiteSpace(json)) return null;
@@ -16,11 +16,20 @@ public sealed record UpdateManifest(string Version, string Url, string? Sha256)
             var manifest = JsonSerializer.Deserialize<UpdateManifest>(json, JsonOptions);
             return manifest is null
                 || string.IsNullOrWhiteSpace(manifest.Version)
+                || !System.Version.TryParse(manifest.Version.Trim(), out _)
                 || string.IsNullOrWhiteSpace(manifest.Url)
                 || !Uri.IsWellFormedUriString(manifest.Url, UriKind.Absolute)
                 || !manifest.Url.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
+                || string.IsNullOrWhiteSpace(manifest.Sha256)
+                || manifest.Sha256.Trim().Length != 64
+                || manifest.Sha256.Trim().Any(character => !char.IsAsciiHexDigit(character))
                 ? null
-                : manifest with { Version = manifest.Version.Trim(), Url = manifest.Url };
+                : manifest with
+                {
+                    Version = manifest.Version.Trim(),
+                    Url = manifest.Url.Trim(),
+                    Sha256 = manifest.Sha256.Trim().ToLowerInvariant()
+                };
         }
         catch (JsonException)
         {

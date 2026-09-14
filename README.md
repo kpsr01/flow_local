@@ -66,10 +66,7 @@ The app project is `src\FlowLocal.App\FlowLocal.App.csproj`; the target runtime 
 
 ## Updates
 
-The app can update itself online. Two placeholders must point at the real release host before shipping:
-
-1. `UpdateService.ManifestUrl` in `src/FlowLocal.App/UpdateService.cs` — the hosted `latest.json`. For GitHub Releases use `https://github.com/<owner>/<repo>/releases/latest/download/latest.json` (GitHub serves the newest release's asset).
-2. `-ReleaseDownloadUrl` in `pack.ps1` — the per-version installer URL template.
+The app checks the repository's GitHub Releases feed at `https://github.com/kpsr01/flow_local/releases/latest/download/latest.json`. `pack.ps1` generates that manifest with the matching release download URL and installer SHA-256.
 
 To ship an update: bump the version, run `.\pack.ps1 -Configuration Release -Version X.Y.Z`, then publish a release tagged `vX.Y.Z` attaching both files from `artifacts\installer`: the setup exe and `latest.json` (which pack.ps1 generates with the installer's SHA-256). The app verifies the downloaded installer against that hash before running it.
 
@@ -77,9 +74,9 @@ For users: the tray menu has **Check for updates**; the app also checks quietly 
 
 ## Uninstall
 
-From inside the app: **Settings > Models and diagnostics > Uninstall FlowLocal**. It confirms once, exits, and runs the setup program's silent uninstaller, which removes the program files and all local data under `%LOCALAPPDATA%\FlowLocal` — history, recordings, settings, and both downloaded models — with no further prompts.
+From inside the app: **Settings > Models and diagnostics > Uninstall FlowLocal**. It confirms once, exits, and runs the setup program's silent uninstaller, which removes the program files and all local data under `%LOCALAPPDATA%\FlowLocal` — history, recordings, settings, and downloaded models — with no further prompts.
 
-The standard Windows entry (**Settings > Apps > FlowLocal**, or *Uninstall* in the Start-menu group) also works; it asks whether to delete local history and recordings and defaults to keeping them for a future installation. The in-app option always removes everything.
+The standard Windows entry (**Settings > Apps > FlowLocal**, or *Uninstall* in the Start-menu group) performs the same complete removal.
 
 ## Run instructions
 

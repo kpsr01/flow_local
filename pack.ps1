@@ -2,10 +2,14 @@ param(
     [string]$Configuration = 'Release',
     [string]$Version = '1.0.0',
     [switch]$PortableOnly,
-    [string]$ReleaseDownloadUrl = 'https://github.com/YOUR-USER/FlowLocal/releases/download/v{0}/FlowLocal-{0}-win-x64-setup.exe'
+    [string]$ReleaseDownloadUrl = 'https://github.com/kpsr01/flow_local/releases/download/v{0}/FlowLocal-{0}-win-x64-setup.exe'
 )
 
 $ErrorActionPreference = 'Stop'
+$parsedVersion = $null
+if (-not [Version]::TryParse($Version, [ref]$parsedVersion)) {
+    throw "'$Version' is not a valid release version."
+}
 $root = $PSScriptRoot
 $publish = Join-Path $root 'artifacts\publish\win-x64'
 $installer = Join-Path $root 'installer\FlowLocal.iss'
@@ -30,9 +34,17 @@ dotnet publish (Join-Path $root 'src\FlowLocal.App\FlowLocal.App.csproj') `
 if ($LASTEXITCODE) { throw "dotnet publish failed with exit code $LASTEXITCODE." }
 $llamaZip = Join-Path $env:TEMP 'flowlocal-llama-b10905.zip'
 $llamaDir = Join-Path $publish 'llama'
-Invoke-WebRequest 'https://github.com/ggerganov/llama.cpp/releases/download/b10905/llama-b10905-bin-win-cpu-x64.zip' -OutFile $llamaZip
-Expand-Archive $llamaZip -DestinationPath $llamaDir -Force
-Remove-Item $llamaZip -Force
+try {
+    Invoke-WebRequest 'https://github.com/ggml-org/llama.cpp/releases/download/b10905/llama-b10905-bin-win-cpu-x64.zip' -OutFile $llamaZip
+    $llamaSha256 = (Get-FileHash $llamaZip -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($llamaSha256 -ne '469da0e5eb50445ab0c527745c34de4c1e5dd9d1c734a8bf66973d48c2be7621') {
+        throw "The downloaded llama.cpp runtime failed its integrity check."
+    }
+    Expand-Archive $llamaZip -DestinationPath $llamaDir -Force
+}
+finally {
+    Remove-Item $llamaZip -Force -ErrorAction SilentlyContinue
+}
 if ($PortableOnly) {
     Write-Host "Portable artifact published to $publish; installer build skipped."
     return

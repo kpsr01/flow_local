@@ -43,7 +43,8 @@ public partial class MainWindow : Window
         new("microphone", "Microphone", "Use the Windows default input or choose a device.", "\uE720"),
         new("styles", "Writing style", "Adapt dictation to the current application or website.", "\uE790"),
         new("privacy", "Privacy & storage", "Control local recordings, retention, and deletion.", "\uE72E"),
-        new("diagnostics", "System status", "Check local speech models, runtime, and installation.", "\uE9D9")
+        new("diagnostics", "System status", "Check local speech models, runtime, and installation.", "\uE9D9"),
+        new("updates", "Updates", "Check for new versions and install updates.", "\uE895")
     ];
 
     private IStyleOverrideStore? _store;
@@ -79,6 +80,7 @@ public partial class MainWindow : Window
         NavList.ItemsSource = NavEntries;
         NavList.SelectedIndex = 0;
         NavVersion.Text = $"v{Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "1.0.0"}";
+        UpdateVersionText.Text = $"Installed version: {UpdateService.CurrentVersion.ToString(3)}";
     }
 
     private void Nav_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -101,6 +103,7 @@ public partial class MainWindow : Window
         PageStyles.Visibility = entry.Key == "styles" ? Visibility.Visible : Visibility.Collapsed;
         PagePrivacy.Visibility = entry.Key == "privacy" ? Visibility.Visible : Visibility.Collapsed;
         PageDiagnostics.Visibility = entry.Key == "diagnostics" ? Visibility.Visible : Visibility.Collapsed;
+        PageUpdates.Visibility = entry.Key == "updates" ? Visibility.Visible : Visibility.Collapsed;
         PageTitle.Text = entry.Title;
         PageSubtitle.Text = entry.Subtitle;
         if (!history) SettingsScroll.ScrollToTop();
@@ -108,6 +111,18 @@ public partial class MainWindow : Window
         {
             NavList.SelectedItem = NavEntries.First(candidate => candidate.Key == entry.Key);
         }
+    }
+
+    public event EventHandler? CheckForUpdatesRequested;
+
+    private void CheckUpdates_Click(object sender, RoutedEventArgs e) =>
+        CheckForUpdatesRequested?.Invoke(this, EventArgs.Empty);
+
+    public void SetUpdateStatus(string message, bool busy)
+    {
+        UpdateStatusText.Text = message;
+        CheckUpdatesButton.IsEnabled = !busy;
+        UpdateProgress.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
     }
 
     public async void ConfigureApplicationStyles(IStyleOverrideStore store, Func<ApplicationContext?> getContext,

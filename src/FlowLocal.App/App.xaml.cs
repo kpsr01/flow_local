@@ -65,6 +65,7 @@ public partial class App : Application
         _overlayWindow.ShowInitializing();
         _overlayWindow.RetryRequested += OnOverlayRetryRequested;
         _settingsWindow.UninstallRequested += (_, uninstaller) => LaunchUninstaller(uninstaller);
+        _settingsWindow.CheckForUpdatesRequested += OnCheckForUpdates;
         _overlayWindow.OpenAppRequested += (_, _) => ShowSettings();
         _overlayWindow.OpenHistoryRequested += (_, _) => ShowHistory();
         _overlayWindow.StartRequested += OnPillStartRequested;
@@ -378,7 +379,12 @@ public partial class App : Application
     }
     private static async Task RunControllerAsync(Func<Task>? action) { if (action is not null) await action(); }
 
-    private async void OnCheckForUpdates(object? sender, EventArgs e) => await CheckForUpdatesAsync(quiet: false);
+    private async void OnCheckForUpdates(object? sender, EventArgs e)
+    {
+        ShowSettings();
+        _settingsWindow?.Navigate("updates");
+        await CheckForUpdatesAsync(quiet: false);
+    }
 
     private async Task RunQuietUpdateCheckAsync()
     {
@@ -391,21 +397,23 @@ public partial class App : Application
     {
         if (_updateBusy) return;
         _updateBusy = true;
+        var status = "Checking for updates…";
+        _settingsWindow?.SetUpdateStatus(status, busy: true);
         try
         {
             var result = await UpdateService.CheckAsync();
             if (result.Update is null)
             {
-                if (!quiet)
-                    ShowUpdateBalloon(result.Error
-                        ?? $"FlowLocal is up to date (version {UpdateService.CurrentVersion.ToString(3)}).");
+                status = result.Error
+                    ?? $"FlowLocal is up to date (version {UpdateService.CurrentVersion.ToString(3)}).";
                 return;
             }
 
             var update = result.Update;
+            status = $"FlowLocal {update.Version} is available. Check for updates to download and install it.";
             if (quiet)
             {
-                ShowUpdateBalloon($"FlowLocal {update.Version} is available. Open the tray menu and choose Check for updates to install it.");
+                ShowUpdateBalloon($"FlowLocal {update.Version} is available. Open Updates in the app to install it.");
                 return;
             }
 
@@ -415,19 +423,27 @@ public partial class App : Application
                 "FlowLocal update",
                 MessageBoxButton.OKCancel,
                 MessageBoxImage.Information);
-            if (choice != MessageBoxResult.OK) return;
-            ShowUpdateBalloon($"Downloading FlowLocal {update.Version}…");
+            if (choice != MessageBoxResult.OK)
+            {
+                status = $"Installation cancelled. FlowLocal {update.Version} is still available; check again when you're ready.";
+                return;
+            }
+            status = $"Downloading and verifying FlowLocal {update.Version}…";
+            _settingsWindow?.SetUpdateStatus(status, busy: true);
             var installer = await UpdateService.DownloadAsync(update);
+            status = "Starting the installer. FlowLocal will close and reopen after the update.";
+            _settingsWindow?.SetUpdateStatus(status, busy: true);
             UpdateService.Apply(installer);
             ExitApplication();
         }
         catch (Exception exception)
         {
-            if (!quiet) ShowUpdateBalloon($"Update failed: {exception.Message}");
+            status = $"Update failed: {exception.Message} Check for updates to try again.";
         }
         finally
         {
             _updateBusy = false;
+            _settingsWindow?.SetUpdateStatus(status, busy: false);
         }
     }
 

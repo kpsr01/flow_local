@@ -70,7 +70,7 @@ The app checks the repository's GitHub Releases feed at `https://github.com/kpsr
 
 To ship an update: bump the version, run `.\pack.ps1 -Configuration Release -Version X.Y.Z`, then publish a release tagged `vX.Y.Z` attaching both files from `artifacts\installer`: the setup exe and `latest.json` (which pack.ps1 generates with the installer's SHA-256). The app verifies the downloaded installer against that hash before running it.
 
-For users: the tray menu has **Check for updates**; the app also checks quietly 30 seconds after startup and shows a tray notification when a newer version exists. Installing downloads the setup, verifies it, exits FlowLocal, and runs the installer silently — history, recordings, and models under `%LOCALAPPDATA%\FlowLocal` are preserved, and the app relaunches afterwards.
+For users: open **Updates** in the app window or choose **Check for updates** in the tray menu. The app also checks quietly 30 seconds after startup and shows a tray notification when a newer version exists. Installing downloads the setup, verifies it, exits FlowLocal, and runs the installer silently — history, recordings, settings, and models under `%LOCALAPPDATA%\FlowLocal` are preserved, and the app relaunches afterwards.
 
 ## Uninstall
 

@@ -296,6 +296,25 @@
                         </Border>
                     </Grid>
 
+                    <Grid x:Name="PageUpdates" Visibility="Collapsed">
+                        <Border Style="{StaticResource SectionCard}">
+                            <StackPanel>
+                                <TextBlock Style="{StaticResource SectionTitle}" Text="Keep FlowLocal up to date" />
+                                <TextBlock x:Name="UpdateVersionText" Style="{StaticResource SectionSub}" Margin="0,8,0,16" />
+                                <TextBlock Style="{StaticResource SectionSub}" Margin="0,0,0,20"
+                                           Text="Check GitHub Releases for a newer version. If one is available, you can download and install it here. You'll be asked before installation; FlowLocal closes and reopens afterwards. Your history, recordings, settings, and models are kept." />
+                                <Button x:Name="CheckUpdatesButton" Style="{StaticResource AccentButton}" HorizontalAlignment="Left"
+                                        MinWidth="180" Content="_Check for updates" Click="CheckUpdates_Click"
+                                        AutomationProperties.Name="Check for updates" />
+                                <ProgressBar x:Name="UpdateProgress" Height="4" Margin="0,20,0,0" IsIndeterminate="True"
+                                             Visibility="Collapsed" AutomationProperties.Name="Update operation in progress" />
+                                <TextBlock x:Name="UpdateStatusText" Style="{StaticResource SectionSub}" Margin="0,16,0,0"
+                                           Text="Ready to check for updates."
+                                           AutomationProperties.LiveSetting="Polite" AutomationProperties.Name="Update status" />
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+
                 </StackPanel>
             </ScrollViewer>
             <Grid x:Name="PageHistory" Grid.Row="1" Margin="28,0,28,24" Visibility="Collapsed">

@@ -1,0 +1,21 @@
+{
+  "model": "gpt-4.1",
+  "models": [
+    "gpt-4.1-mini",
+    "gpt-4.1-nano"
+  ],
+  "modelFamily": "GPT-4.1",
+  "sourceReference": "https://developers.openai.com/cookbook/examples/gpt4-1_prompting_guide",
+  "sourceDate": "2026-09-13",
+  "policies": {
+    "default": {
+      "reasoningModes": [],
+      "rules": [
+        "Keep requirements explicit and literal without adding implied requirements.",
+        "Use separate paragraphs or bullets for distinct instructions; retain the original order and all conditions.",
+        "Preserve the user's stated goal, scope, constraints, uncertainty, and requested output; never invent details.",
+        "Retain all dictated plan steps in order. Do not answer, execute, solve, or add a plan, tests, tools, examples, or delegation."
+      ]
+    }
+  }
+}

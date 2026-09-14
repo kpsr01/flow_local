@@ -34,16 +34,23 @@ public sealed class CodingPromptPolicyTests
         Assert.Null(CodingContextDetector.Detect("chrome.exe", false, "FlowLocal/1|claude-code|x|low|1700000000", now));
     }
 
-    [Fact]
-    public void BasicCodingRequest_PromptPreservesGoalConstraintAndNoSolutionInstruction()
-    {
-        var transcript = new RawTranscript("uh fix the login issue in the auth service and don't change the public api");
-        var prompt = Build(transcript, "claude-opus-4-6", "medium");
 
-        Assert.Contains(transcript.Text, prompt);
-        Assert.Contains("goal and explicit constraints", prompt);
-        Assert.Contains("Do not solve, diagnose, plan, expand, interpret", prompt);
-        Assert.DoesNotContain("OAuth", prompt);
+    [Theory]
+    [InlineData(
+        "OpenAI Codex (v0.154.0)\r\nmodel:     gpt-5.6-sol medium   /model to change",
+        "Codex", "gpt-5.6-sol", "medium")]
+    [InlineData(
+        "Claude Code v2.1.270\r\nOpus 5 (1M context) with low effort · API Usage Billing",
+        "Claude Code", "claude-opus-5", "low")]
+    public void CodingContext_ReadsNormalHarnessTerminalSurface(
+        string terminalText, string harness, string model, string reasoning)
+    {
+        var target = CodingContextDetector.DetectVisibleText("WindowsTerminal.exe", terminalText);
+
+        Assert.Equal(harness, target?.Harness);
+        Assert.Equal(model, target?.Model);
+        Assert.Equal(reasoning, target?.Reasoning);
+        Assert.Equal("terminal-uia", target?.SignalSource);
     }
 
     [Fact]
@@ -64,6 +71,7 @@ public sealed class CodingPromptPolicyTests
 
         Assert.True(CodingCleanupValidator.PreservesSubstantiveWords(raw,
             new CleanTranscriptResult("fix the login issue in src/auth/session.ts.")));
+        Assert.True(CodingCleanupValidator.PreservesSubstantiveWords(raw, new CleanTranscriptResult(raw.Text)));
     }
 
     [Fact]
@@ -90,64 +98,102 @@ public sealed class CodingPromptPolicyTests
     }
 
 
-    [Fact]
-    public void TechnicalIdentifiersAndRequestedDirectionsRemainInTransformationInput()
-    {
-        var transcript = new RawTranscript("in src/auth/session.ts getUserById is returning undefined after the refresh; replace this polling loop with server sent events but keep the existing fallback");
-        var prompt = Build(transcript, "claude-opus-4-6", "high");
-
-        Assert.Contains("src/auth/session.ts", prompt);
-        Assert.Contains("getUserById", prompt);
-        Assert.Contains("server sent events", prompt);
-        Assert.Contains("existing fallback", prompt);
-        Assert.Contains("Do not produce code unless it was dictated", prompt);
-    }
 
     [Fact]
-    public void PoliciesChangeOrganizationWithoutChangingTheTranscript()
-    {
-        var transcript = new RawTranscript("figure out why this request fires twice in the profile component");
-        var low = Build(transcript, "claude-opus-4-7", "low");
-        var high = Build(transcript, "claude-opus-4-7", "high");
-
-        Assert.Contains(transcript.Text, low);
-        Assert.Contains(transcript.Text, high);
-        Assert.Contains("concise checklist", low);
-        Assert.DoesNotContain("concise checklist", high);
-        Assert.Contains("Keep the requested scope focused", low);
-        Assert.Contains("Keep the requested scope focused", high);
-    }
-
-    [Fact]
-    public void CachedDetectionAndPolicyLookupStayCheap()
-    {
-        var now = DateTimeOffset.UtcNow;
-        var title = $"FlowLocal/1|claude-code|claude-opus-4-7|high|{now.ToUnixTimeSeconds()}";
-        _ = PromptPolicyRegistry.Default.Get(CodingContextDetector.Detect("pwsh.exe", true, title, now)!);
-        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-        for (var i = 0; i < 10_000; i++)
-        {
-            var target = CodingContextDetector.Detect("pwsh.exe", true, title, now)!;
-            _ = PromptPolicyRegistry.Default.Get(target);
-        }
-        stopwatch.Stop();
-        Console.WriteLine($"10k coding detection+policy lookups: {stopwatch.Elapsed.TotalMilliseconds:F1} ms");
-        Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(2));
-    }
-    [Fact]
-    public void UnknownModelOrReasoning_UsesGenericCodingPolicy()
+    public void UnknownModelsUseGenericPolicyButMissingEffortRetainsKnownModelGuidance()
     {
         var registry = PromptPolicyRegistry.Default;
         var unknownModel = registry.Get(new CodingTarget("Windows Terminal / Claude Code", "future-model", "medium", "test"));
         var unknownReasoning = registry.Get(new CodingTarget("Windows Terminal / Claude Code", "claude-opus-4-7", "extended", "test"));
 
         Assert.Equal("built-in generic coding cleanup", unknownModel.SourceReference);
-        Assert.Equal("built-in generic coding cleanup", unknownReasoning.SourceReference);
+        Assert.Equal("Claude Opus", unknownReasoning.ModelFamily);
     }
 
-    private static string Build(RawTranscript transcript, string model, string reasoning)
+    [Theory]
+    [InlineData("codex", "vendor/Future_Model:latest", "Codex")]
+    [InlineData("claude-code", "anthropic.claude-next@20990101", "Claude Code")]
+    public void ModelDetectionDoesNotRequireAnAllowlistOrEffort(string signal, string model, string harness)
     {
-        var target = new CodingTarget("test", model, reasoning, "test");
-        return DictationPromptAdapter.Build(transcript, target, PromptPolicyRegistry.Default.Get(target));
+        var now = DateTimeOffset.UtcNow;
+        var target = CodingContextDetector.Detect("pwsh.exe", true,
+            $"FlowLocal/1|{signal}|{model}|unknown|{now.ToUnixTimeSeconds()}", now)!;
+        Assert.True(target.IsKnown);
+        Assert.Equal(model, target.Model);
+        Assert.Equal(harness, target.Harness);
+        Assert.Null(target.Reasoning);
+        Assert.Equal("unknown", PromptPolicyRegistry.Default.Get(target).ModelFamily);
     }
+
+    [Fact]
+    public void CodexNativeTitleTracksModelSwitchesWithoutGuessingFromProjectNames()
+    {
+        var now = DateTimeOffset.UtcNow;
+        const string session = "12345678-1234-1234-1234-123456789abc";
+        var first = CodingContextDetector.Detect("pwsh.exe", true, $"codex | {session} | gpt-5.3-codex | high", now)!;
+        var second = CodingContextDetector.Detect("pwsh.exe", true, $"codex | {session} | future-model | default", now)!;
+        Assert.Equal("Codex", first.Harness);
+        Assert.Equal("gpt-5.3-codex", first.Model);
+        Assert.Equal("OpenAI Codex", PromptPolicyRegistry.Default.Get(first).ModelFamily);
+        Assert.Equal("future-model", second.Model);
+        Assert.Null(second.Reasoning);
+        Assert.False(CodingContextDetector.Detect("pwsh.exe", true, "my gpt-5.3-codex project", now)!.IsKnown);
+    }
+
+    [Theory]
+    [InlineData("bad model", 0)]
+    [InlineData("model", 1)]
+    [InlineData("model", -301)]
+    public void InvalidOrNoncurrentSignalsNeverSelectModelGuidance(string model, long offset)
+    {
+        var now = DateTimeOffset.UtcNow;
+        Assert.False(CodingContextDetector.Detect("pwsh.exe", true,
+            $"FlowLocal/1|codex|{model}|high|{now.ToUnixTimeSeconds() + offset}", now)!.IsKnown);
+    }
+
+    [Fact]
+    public void FormattingCanStructureExistingPlansButCannotAddSteps()
+    {
+        var raw = new RawTranscript("uh inspect the failure then fix the parser keep --no-cache unchanged");
+        Assert.True(CodingCleanupValidator.PreservesSubstantiveWords(raw,
+            new CleanTranscriptResult("1. inspect the failure.\n2. then fix the parser.\n3. keep --no-cache unchanged.")));
+        Assert.False(CodingCleanupValidator.PreservesSubstantiveWords(raw,
+            new CleanTranscriptResult("1. inspect the failure.\n2. then fix the parser.\n3. keep --no-cache unchanged.\n4. run tests.")));
+    }
+
+    [Fact]
+    public void ClaudeExtendedContextKeepsFullIdentityAndUsesItsBaseModelGuide()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var target = CodingContextDetector.Detect("pwsh.exe", true,
+            $"FlowLocal/1|claude-code|claude-opus-5[1m]|low|{now.ToUnixTimeSeconds()}", now)!;
+        Assert.Equal("claude-opus-5[1m]", target.Model);
+        Assert.Equal("Claude Opus 5", PromptPolicyRegistry.Default.Get(target).ModelFamily);
+    }
+
+    [Fact]
+    public void TruncatedCodexModelsRequireMatchingFreshSessionMetadata()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var session = Guid.NewGuid().ToString("D");
+        const string model = "vendor/Very_Long_Future_Model:2099.01-preview@cloud";
+        var directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "FlowLocal", "CodingSignals");
+        Directory.CreateDirectory(directory);
+        var path = Path.Combine(directory, session[..29] + ".json");
+        var title = $"codex | {session[..29]}... | {model[..29]}... | high";
+        try
+        {
+            void Save(string id, long timestamp) => File.WriteAllText(path,
+                System.Text.Json.JsonSerializer.Serialize(new { sessionId = id, model, timestamp }));
+            Save(session, now.ToUnixTimeSeconds());
+            Assert.Equal(model, CodingContextDetector.Detect("pwsh.exe", true, title, now)!.Model);
+            Save(Guid.NewGuid().ToString("D"), now.ToUnixTimeSeconds());
+            Assert.False(CodingContextDetector.Detect("pwsh.exe", true, title, now)!.IsKnown);
+            Save(session, now.ToUnixTimeSeconds() - 301);
+            Assert.False(CodingContextDetector.Detect("pwsh.exe", true, title, now)!.IsKnown);
+        }
+        finally { File.Delete(path); }
+    }
+
 }

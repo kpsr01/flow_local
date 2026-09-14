@@ -1,0 +1,47 @@
+{
+  "model": "gpt-3.5-turbo",
+  "models": [
+    "gpt-4",
+    "gpt-4-turbo",
+    "gpt-4-turbo-preview",
+    "gpt-4.5-preview",
+    "gpt-4o",
+    "gpt-4o-mini",
+    "chatgpt-4o-latest",
+    "chat-latest",
+    "gpt-5.1",
+    "gpt-5.1-chat-latest",
+    "gpt-5.2",
+    "gpt-5.2-pro",
+    "gpt-5.2-chat-latest",
+    "gpt-5.3-chat-latest",
+    "gpt-5.4",
+    "gpt-5.4-mini",
+    "gpt-5.4-nano",
+    "gpt-5.4-pro",
+    "gpt-5.5",
+    "gpt-5.5-pro",
+    "gpt-5.6-sol",
+    "gpt-5.6-terra",
+    "gpt-5.6-luna",
+    "gpt-5.6-cyber",
+    "gpt-oss-120b",
+    "gpt-oss-20b",
+    "gpt-daybreak-blue-latest",
+    "gpt-daybreak-red-latest"
+  ],
+  "modelFamily": "OpenAI text models",
+  "sourceReference": "https://developers.openai.com/api/docs/guides/prompt-engineering",
+  "sourceDate": "2026-09-13",
+  "policies": {
+    "default": {
+      "reasoningModes": [],
+      "rules": [
+        "Use clear, direct instructions and separate existing context, requirements, and output preferences with paragraphs or bullets.",
+        "Apply general OpenAI guidance only; do not infer model-specific capabilities or introduce missing examples.",
+        "Preserve the user's stated goal, scope, constraints, uncertainty, and requested output; never invent details.",
+        "Retain all dictated plan steps in order. Do not answer, execute, solve, or add a plan, tests, tools, examples, or delegation."
+      ]
+    }
+  }
+}

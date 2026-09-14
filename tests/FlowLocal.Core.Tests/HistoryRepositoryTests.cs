@@ -27,7 +27,8 @@ public sealed class HistoryRepositoryTests
             InsertionDuration = TimeSpan.FromMilliseconds(30),
             TotalDuration = TimeSpan.FromSeconds(4),
             InsertionMethod = TextInsertionMethod.Direct,
-            RetryCount = 2
+            RetryCount = 2,
+            CodingTarget = new CodingTarget("Windows Terminal", "gpt-5.3-codex", "high", "codex-terminal-title", Harness: "Codex")
         };
 
         await repository.CreateAsync(entry, CancellationToken.None);
@@ -36,6 +37,35 @@ public sealed class HistoryRepositoryTests
         Assert.Equal(entry, stored);
         Assert.Equal(entry.Id, Assert.Single(await repository.QueryAsync(new HistoryQuery(Search: "phrase"), CancellationToken.None)).Id);
         Assert.Empty(await repository.QueryAsync(new HistoryQuery(Search: "missing"), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task MigratesLegacyHistoryWithoutLosingRowsAndPersistsCodingIdentityAcrossUpdates()
+    {
+        using var temp = new TempDirectory();
+        var path = Path.Combine(temp.Path, "history.db");
+        var repository = new SqliteHistoryRepository(path);
+        await repository.InitializeAsync(CancellationToken.None);
+        var legacy = Entry(DateTimeOffset.UtcNow);
+        await repository.CreateAsync(legacy, CancellationToken.None);
+        using (var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={path};Pooling=False"))
+        {
+            await connection.OpenAsync();
+            using var command = connection.CreateCommand();
+            command.CommandText = "ALTER TABLE history DROP COLUMN coding_target_json";
+            await command.ExecuteNonQueryAsync();
+        }
+        await repository.InitializeAsync(CancellationToken.None);
+        Assert.Equal(legacy, await repository.GetAsync(legacy.Id, CancellationToken.None));
+        var updated = legacy with
+        {
+            CodingTarget = new CodingTarget("Terminal", "unknown-provider/new-model", null, "test", Harness: "Claude Code"),
+            RetryCount = 1
+        };
+        await repository.UpdateAsync(updated, CancellationToken.None);
+        var reopened = new SqliteHistoryRepository(path);
+        await reopened.InitializeAsync(CancellationToken.None);
+        Assert.Equal(updated, await reopened.GetAsync(legacy.Id, CancellationToken.None));
     }
 
     [Fact]

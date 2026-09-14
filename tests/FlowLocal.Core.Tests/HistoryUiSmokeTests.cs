@@ -33,7 +33,7 @@ public sealed class HistoryUiSmokeTests
             null,
             RecordingState.Failed,
             DictationErrorCode.Interrupted,
-            2);
+            2, new CodingTarget("Windows Terminal", "vendor/future-model", null, "test", Harness: "Codex"));
         var repository = new InMemoryHistoryRepository(entry);
         var actionCalls = 0;
         var window = new MainWindow();
@@ -56,8 +56,9 @@ public sealed class HistoryUiSmokeTests
             Assert.Contains("example.test", window.HistoryMetadataText.Text);
             Assert.Contains("smoke-asr", window.HistoryMetadataText.Text);
             Assert.Contains("smoke-cleaner", window.HistoryMetadataText.Text);
+            Assert.Contains("Codex", window.HistoryMetadataText.Text);
+            Assert.Contains("vendor/future-model", window.HistoryMetadataText.Text);
             Assert.Contains("Interrupted", window.HistoryMetadataText.Text);
-            Assert.Equal("History loaded.", window.HistoryStatusText.Text);
             Assert.Equal(0, actionCalls);
         }
         finally

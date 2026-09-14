@@ -1,0 +1,43 @@
+{
+  "model": "claude-sonnet-4-6",
+  "models": [
+    "claude-sonnet-4-5",
+    "claude-sonnet-4-5-20250929",
+    "claude-opus-4-5",
+    "claude-opus-4-5-20251101",
+    "claude-haiku-4-5",
+    "claude-haiku-4-5-20251001",
+    "claude-opus-4",
+    "claude-opus-4-20250514",
+    "claude-opus-4-1",
+    "claude-opus-4-1-20250805",
+    "claude-sonnet-4",
+    "claude-sonnet-4-20250514",
+    "claude-3-7-sonnet-latest",
+    "claude-3-7-sonnet-20250219",
+    "claude-3-5-sonnet-latest",
+    "claude-3-5-sonnet-20241022",
+    "claude-3-5-haiku-latest",
+    "claude-3-5-haiku-20241022",
+    "claude-3-opus-latest",
+    "claude-3-opus-20240229",
+    "claude-3-sonnet-20240229",
+    "claude-3-haiku-20240307",
+    "claude-mythos-5",
+    "claude-mythos-5-1"
+  ],
+  "modelFamily": "Claude",
+  "sourceReference": "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices",
+  "sourceDate": "2026-09-13",
+  "policies": {
+    "default": {
+      "reasoningModes": [],
+      "rules": [
+        "Use clear, explicit language and preserve any user-provided reasons and context.",
+        "Separate distinct requirements with bullets; use numbered steps only for an existing ordered plan.",
+        "Preserve the user's stated goal, scope, constraints, uncertainty, and requested output; never invent details.",
+        "Retain all dictated plan steps in order. Do not answer, execute, solve, or add a plan, tests, tools, examples, or delegation."
+      ]
+    }
+  }
+}

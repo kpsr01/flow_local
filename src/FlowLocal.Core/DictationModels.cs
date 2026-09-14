@@ -91,9 +91,10 @@ public sealed record CodingTarget(
     string? Model,
     string? Reasoning,
     string SignalSource,
-    string? UnknownReason = null)
+    string? UnknownReason = null,
+    string? Harness = null)
 {
-    public bool IsKnown => Model is not null && Reasoning is not null;
+    public bool IsKnown => !string.IsNullOrWhiteSpace(Model);
 }
 
 public sealed record ApplicationContext(
@@ -170,30 +171,67 @@ public static class CodingCleanupValidator
         ArgumentNullException.ThrowIfNull(cleaned);
 
         var source = raw.Text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
-        var output = cleaned.Text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
         var sourceIndex = 0;
-        for (var outputIndex = 0; outputIndex < output.Length; outputIndex++)
+        var leadingFillersEnd = 0;
+        while (leadingFillersEnd < source.Length && IsSafeFiller(source[leadingFillersEnd])) leadingFillersEnd++;
+        foreach (var line in cleaned.Text.Split('\n'))
         {
-            while (outputIndex == 0 && sourceIndex < source.Length && IsSafeFiller(source[sourceIndex])) sourceIndex++;
-            if (sourceIndex >= source.Length ||
-                !Equivalent(source[sourceIndex], output[outputIndex], outputIndex == output.Length - 1))
-                return false;
-            sourceIndex++;
+            var output = line.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+            for (var i = 0; i < output.Length; i++)
+            {
+                var token = output[i];
+                if (i == 0 && output.Length > 1 && sourceIndex < source.Length &&
+                    token != source[sourceIndex] && IsListMarker(token))
+                    continue;
+                while (sourceIndex < leadingFillersEnd && !Equivalent(source[sourceIndex], token, false)) sourceIndex++;
+                if (sourceIndex >= source.Length || !Equivalent(source[sourceIndex], token,
+                    sourceIndex == source.Length - 1))
+                    return false;
+                sourceIndex++;
+            }
         }
 
         return sourceIndex == source.Length;
     }
 
+
+    public static string CreateFormattingGrammar(RawTranscript transcript)
+    {
+        var words = transcript.Text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+        var grammar = new System.Text.StringBuilder("root ::= ");
+        var leading = true;
+        for (var i = 0; i < words.Length; i++)
+        {
+            var word = words[i];
+            var literal = System.Text.Json.JsonSerializer.Serialize(word);
+            if (leading && IsSafeFiller(word) && i < words.Length - 1)
+            {
+                grammar.Append('(').Append(literal).Append(" sep)? ");
+                continue;
+            }
+            leading = false;
+            grammar.Append(literal);
+            if (word.All(char.IsLetter)) grammar.Append(" punct?");
+            else if (i == words.Length - 1) grammar.Append(" \".\"?");
+            if (i < words.Length - 1) grammar.Append(" sep ");
+        }
+        grammar.Append("\nsep ::= \" \" | \"\\n\" | \"\\n\\n\" | \"\\n- \"\npunct ::= [.,;:!?]\n");
+        return grammar.ToString();
+    }
     private static bool IsSafeFiller(string token) =>
         SafeFillers.Contains(token.Trim(',', '.', ';', ':', '!', '?'));
+
+    private static bool IsListMarker(string token) => token is "-" or "*" or "+" ||
+        token.Length > 1 && token[^1] is '.' or ')' && token[..^1].All(char.IsAsciiDigit);
 
     private static bool Equivalent(string raw, string output, bool last)
     {
         if (string.Equals(raw, output, StringComparison.Ordinal)) return true;
-        return last && output.EndsWith('.') &&
-            string.Equals(raw, output[..^1], StringComparison.Ordinal);
-
-
+        if (last && output.EndsWith('.') && string.Equals(raw, output[..^1], StringComparison.Ordinal))
+            return true;
+        // Only natural words may gain punctuation; technical tokens retain exact spelling.
+        return raw.All(char.IsLetter) &&
+            string.Equals(raw, output.TrimEnd(',', '.', ';', ':', '!', '?'), StringComparison.Ordinal);
     }
 }
 public sealed record ActiveTarget(
@@ -261,7 +299,8 @@ public sealed record HistoryEntry(
     TextInsertionMethod? InsertionMethod,
     RecordingState State,
     DictationErrorCode ErrorCode = DictationErrorCode.None,
-    int RetryCount = 0);
+    int RetryCount = 0,
+    CodingTarget? CodingTarget = null);
 
 public sealed record HistoryQuery(
     string? Search = null,

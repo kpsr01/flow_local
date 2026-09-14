@@ -19,7 +19,8 @@ internal sealed class PromptPolicyRegistry
         string ModelFamily,
         string SourceReference,
         string SourceDate,
-        Dictionary<string, Policy> Policies);
+        Dictionary<string, Policy> Policies,
+        string[]? Models = null);
 
     private sealed record Policy(string[] ReasoningModes, string[] Rules);
 
@@ -28,25 +29,29 @@ internal sealed class PromptPolicyRegistry
 
     internal PromptingPolicy Get(CodingTarget target)
     {
-        if (!target.IsKnown || !Cached.Value.TryGetValue(target.Model!, out var guide))
+        var model = target.Model;
+        if (model?.EndsWith("[1m]", StringComparison.OrdinalIgnoreCase) == true) model = model[..^4];
+        if (!target.IsKnown || !Cached.Value.TryGetValue(model!, out var guide))
             return Generic(target);
 
-        var mode = target.Reasoning!;
-        if (!guide.Policies.TryGetValue(mode, out var policy))
+        var mode = target.Reasoning ?? "unknown";
+        if (!guide.Policies.TryGetValue(mode.ToLowerInvariant(), out var policy) ||
+            !policy.ReasoningModes.Contains(mode, StringComparer.OrdinalIgnoreCase))
             guide.Policies.TryGetValue("default", out policy);
-        if (policy is null || !policy.ReasoningModes.Contains(mode, StringComparer.OrdinalIgnoreCase))
-            return Generic(target);
+        if (policy is null) return Generic(target);
 
-        return new PromptingPolicy(guide.Model, guide.ModelFamily, mode,
+        return new PromptingPolicy(target.Model!, guide.ModelFamily, mode,
             guide.SourceReference, guide.SourceDate, policy.Rules);
     }
 
     internal static PromptingPolicy Generic(CodingTarget target) => new(
         target.Model ?? "unknown", "unknown", target.Reasoning ?? "unknown", "built-in generic coding cleanup", "",
         [
-            "Keep the request focused on the stated goal and constraints.",
-            "Preserve the user's requested delegation level; do not invent a plan or solution.",
-            "Use concise sections only when they clarify the dictated request."
+            "Keep the stated goal, context, constraints, and requested output clear and separate when needed.",
+            "Use paragraphs for distinct topics and bullets for existing requirements; retain the original order.",
+            "Preserve all dictated plan steps and acceptance criteria; never supply missing ones.",
+            "Keep questions and uncertainty intact. Do not answer, recommend, infer a solution, or increase delegation.",
+            "Use plain, concise language without adding role prompts, tool instructions, examples, or reasoning requests."
         ]);
 
     private static IReadOnlyDictionary<string, Guide> Load()
@@ -59,11 +64,19 @@ internal sealed class PromptPolicyRegistry
             try
             {
                 var guide = JsonSerializer.Deserialize<Guide>(File.ReadAllText(path), new JsonSerializerOptions(JsonSerializerDefaults.Web));
-                if (guide is not null && !string.IsNullOrWhiteSpace(guide.Model))
+                if (guide is not null && !string.IsNullOrWhiteSpace(guide.Model) &&
+                    guide.Policies is not null && guide.Policies.Values.All(p => p is not null &&
+                        p.Rules is { Length: > 0 } && p.Rules.All(r => !string.IsNullOrWhiteSpace(r)) &&
+                        p.ReasoningModes is not null))
+                {
                     guides[guide.Model] = guide;
+                    foreach (var model in guide.Models ?? [])
+                        if (!string.IsNullOrWhiteSpace(model)) guides[model] = guide;
+                }
             }
             catch (JsonException) { }
             catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
         }
         return guides;
     }

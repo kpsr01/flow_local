@@ -36,10 +36,12 @@ public sealed class DictationController : IDisposable
     private DoubleTapDetector _doubleTap;
     private CancellationTokenSource? _releaseDeferral;
     private bool _disposed;
+    private CodingTarget? _codingTarget;
+    private int _sessionGeneration;
 
     public ApplicationContext? CurrentContext { get; private set; }
     public OutputClassification? CurrentClassification { get; private set; }
-    public CodingTarget? CurrentCodingTarget { get; private set; }
+    public CodingTarget? CurrentCodingTarget => Volatile.Read(ref _codingTarget);
 
     /// <summary>Enables hands-free activation by double-tapping the push-to-talk chord.</summary>
     public bool HandsFreeEnabled
@@ -172,11 +174,12 @@ public sealed class DictationController : IDisposable
 
             CurrentContext = null;
             CurrentClassification = GeneralClassification();
-            CurrentCodingTarget = null;
+            Volatile.Write(ref _codingTarget, null);
+            var sessionGeneration = Interlocked.Increment(ref _sessionGeneration);
             _style = CurrentClassification.Style;
             if (_target is not null)
             {
-                CurrentCodingTarget = CodingContextDetector.Detect(_target);
+                _ = ApplyCodingContextAsync(_target, sessionGeneration, token);
                 try
                 {
                     var settings = (await _styleOverrides.LoadAsync(token)).Settings;
@@ -204,7 +207,8 @@ public sealed class DictationController : IDisposable
                 CurrentContext?.ExecutableName ?? _target?.ExecutableName,
                 CurrentContext?.Domain, CurrentClassification?.Category, _style,
                 _asrModelName, _cleanupBackend.DisplayName, null, null, null, null, null,
-                RecordingState.Starting);            if (_history is not null) await _history.CreateAsync(_entry, CancellationToken.None);
+                RecordingState.Starting, CodingTarget: CurrentCodingTarget);
+            if (_history is not null) await _history.CreateAsync(_entry, CancellationToken.None);
             LogLifecycle(_entry);
 
             // The recoverable row must exist before the file is opened.
@@ -390,8 +394,27 @@ public sealed class DictationController : IDisposable
         return (new CleanTranscriptResult(raw.Text), true);
     }
 
+    private async Task ApplyCodingContextAsync(
+        ActiveTarget target, int sessionGeneration, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var detected = await CodingContextDetector.DetectAsync(target, cancellationToken);
+            if (detected is not null && Volatile.Read(ref _sessionGeneration) == sessionGeneration)
+                Volatile.Write(ref _codingTarget, detected);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception)
+        {
+            _logger.LogDebug(exception, "Coding harness detection failed.");
+        }
+    }
+
     private async Task SaveAsync(HistoryEntry entry, CancellationToken token)
     {
+        if (CurrentCodingTarget is { } detected) entry = entry with { CodingTarget = detected };
         _entry = entry;
         if (_history is not null) await _history.UpdateAsync(entry, token);
     }
@@ -527,7 +550,8 @@ public sealed class DictationController : IDisposable
         _target = null;
         CurrentContext = null;
         CurrentClassification = null;
-        CurrentCodingTarget = null;
+        Interlocked.Increment(ref _sessionGeneration);
+        Volatile.Write(ref _codingTarget, null);
         _style = DefaultStyle;
         _recordingPath = null;
         _sessionOptions = null;

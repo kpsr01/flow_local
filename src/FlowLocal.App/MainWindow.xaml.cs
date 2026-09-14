@@ -29,7 +29,6 @@ public enum HistoryAction
     Delete
 }
 
-public enum RecoveryChoice { Recover, Delete, Later }
 
 public sealed record NavEntry(string Key, string Title, string Subtitle, string Glyph);
 
@@ -341,23 +340,6 @@ public partial class MainWindow : Window
     public async Task RefreshHistoryAsync() =>
         _ = await RunHistoryAsync("Refreshing history…", "History updated.", RefreshHistoryAsync);
 
-    public Task<RecoveryChoice> PromptRecoveryAsync(IReadOnlyList<HistoryEntry> entries,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(entries);
-        if (entries.Count == 0) return Task.FromResult(RecoveryChoice.Later);
-        cancellationToken.ThrowIfCancellationRequested();
-        var message = $"FlowLocal found {entries.Count} interrupted dictation session{(entries.Count == 1 ? "" : "s")}.\n\n" +
-                      "Yes: open History to recover manually\nNo: delete interrupted sessions\nCancel: decide later\n\nRecovery never inserts text automatically.";
-        var result = MessageBox.Show(this, message, "Recover interrupted dictation", MessageBoxButton.YesNoCancel,
-            MessageBoxImage.Question, MessageBoxResult.Cancel);
-        return Task.FromResult(result switch
-        {
-            MessageBoxResult.Yes => RecoveryChoice.Recover,
-            MessageBoxResult.No => RecoveryChoice.Delete,
-            _ => RecoveryChoice.Later
-        });
-    }
 
     public void RefreshDiagnostics()
     {
@@ -510,6 +492,8 @@ public partial class MainWindow : Window
         HistoryCleanedTextBox.Text = entry.CleanedTranscript ?? "";
         HistoryMetadataText.Text = $"{entry.CreatedAt.LocalDateTime:g}  •  {entry.State}  •  {Safe(entry.TargetApplication)}  •  {SafeDomain(entry.Domain)}\n" +
             $"Duration {Format(entry.Duration)}  •  ASR {Safe(entry.AsrModelName)} ({Format(entry.AsrDuration)})  •  Cleanup {Safe(entry.CleanupModelName)} ({Format(entry.CleanupDuration)})\n" +
+            $"Harness {Safe(entry.CodingTarget?.Harness)}  •  Coding model {Safe(entry.CodingTarget?.Model)}  •  Effort {Safe(entry.CodingTarget?.Reasoning)}\n" +
+            (entry.CodingTarget?.UnknownReason is { } reason ? $"Detection: {reason}\n" : "") +
             $"Insertion {entry.InsertionMethod?.ToString() ?? "—"} ({Format(entry.InsertionDuration)})  •  Error {entry.ErrorCode}  •  Retries {entry.RetryCount}";
         HistoryActionPanel.IsEnabled = !_historyBusy;
     }

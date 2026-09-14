@@ -147,21 +147,8 @@ public partial class App : Application
                 var settings = await _appSettings.LoadAsync();
                 ApplyAppSettings(settings);
             }
-            var recovery = new CrashRecoveryService(_history);
-            var entries = await recovery.ScanAsync(CancellationToken.None);
-            if (entries.Count > 0)
-            {
-                var choice = await _settingsWindow.PromptRecoveryAsync(entries, CancellationToken.None);
-                if (choice == RecoveryChoice.Recover)
-                {
-                    ShowHistory(entries[0].Id);
-                }
-                else if (choice == RecoveryChoice.Delete)
-                {
-                    foreach (var entry in entries) await recovery.DeleteAsync(entry, CancellationToken.None);
-                    await _settingsWindow.RefreshHistoryAsync();
-                }
-            }
+            var recovered = await new CrashRecoveryService(_history).ScanAsync(CancellationToken.None);
+            if (recovered.Count > 0) await _settingsWindow.RefreshHistoryAsync();
             await _dictation.InitializeAsync();
             _dictationReady = true;
             // Wispr-style persistent idle pill: collapses to a tiny mic glyph instead of hiding.

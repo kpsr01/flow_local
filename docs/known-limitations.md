@@ -14,10 +14,10 @@ This list describes the current implementation rather than the broader project s
 - Nemotron inference runs inside the separate `FlowLocal.AsrWorker.exe` process. A stalled or natively-crashing runtime is contained there; the worker is killed and respawned for the next dictation, and a wedged session leaves saved audio for retry.
 - Inference is pinned to the CPU backend; there is no GPU selection or tuning. Streaming partials are internal and only the final transcript is inserted.
 - The worker keeps a streaming session resident but still finalizes at release; long sessions are bounded by model/runtime limits and the completion timeout rather than an explicit duration limit.
-- Raw ASR output has punctuation/capitalization disabled; the cleanup model performs that pass. First initialization may require the network when running from source.
+- Raw ASR output has punctuation/capitalization disabled. General cleanup performs that pass; coding cleanup deliberately retains word case and spelling to avoid changing identifiers. It does not correct substantive ASR mistakes. First initialization may require the network when running from source.
 - Cleanup requires `LFM2.5-1.2B-Instruct-QAD-Q4_0.gguf`; the packaged build includes llama.cpp, while source runs can use `FLOWLOCAL_LLAMA_SERVER_PATH`. `FLOWLOCAL_CLEANUP_DSPARK=1` additionally requires the DSpark Q4_K_M sidecar and enables speculative decoding.
 - Cleanup runs on CPU with a 2048-token context and deterministic sampling. DSpark is an optional throughput path, not a quality change: it must be checked against the paired benchmark because speculative decoding can be slower on some short inputs.
-- The prompt adapter uses a compact LFM chat template and explicitly asks the model to preserve technical tokens; output is still model-generated and the existing validator/retry/raw fallback remain the safety boundary.
+- Coding cleanup constrains decoding to the original substantive words and order; the local model selects punctuation and layout, whose quality is not guaranteed. General cleanup remains prompt-driven. Both retain validation/retry/raw fallback.
 - Greedy decoding uses the model card's `repetition_penalty=1.05`. Rare n-gram loops remain possible on pathological verbatim-repetition inputs; the card's own guidance treats this penalty setting as the production default and `CleanupResultValidator` plus the raw-transcript fallback bound the damage.
 - Cleanup retries once and then falls back to the raw transcript. A fallback session is marked `CleanupFailed`; unchanged text is not a cleanup-success claim.
 
@@ -36,7 +36,9 @@ This list describes the current implementation rather than the broader project s
 - FlowLocal records only normalized domains, never URL paths or query strings. It therefore cannot classify by page path or inspect full page content.
 - Built-in domain/application tables are finite. Unknown targets use control hints, generic browser, or the universal/general fallback; users must add overrides for other targets.
 - Overrides can choose categories/styles but do not add arbitrary classifier code or URL rules. Full URLs are rejected.
-- Cleanup is meant for faithful formatting, not summarization, answering questions, executing prompts, or guaranteed code generation.
+- Cleanup is for faithful formatting, not summarization, answering questions, executing prompts, or inventing code and plans.
+- Codex and Claude Code detection requires the bundled adapters and a foreground window exposing the harness's application-set title. Pinned tab titles, some integrated IDE terminals, remote sessions, and incompatible harness versions can hide that signal. Model IDs are not allowlisted; unavailable metadata remains unknown and unlisted IDs use general rewrite-only guidance.
+- Codex truncates long title fields. A full model ID then requires matching hook metadata younger than five minutes; review the hooks in `/hooks`. Claude refreshes its timestamped status line every 30 seconds. Detection reports the harness-selected model, not the actual backend behind an opaque gateway.
 
 ## Insertion
 

@@ -22,6 +22,22 @@ When running from source, the target model is discovered at `%LOCALAPPDATA%\Flow
 
 The app starts one resident `llama-server.exe` process, uses a deterministic LFM chat prompt, temperature 0, top-k 1, top-p 1, repetition penalty 1.05, a 2048-token context, and streams completion tokens. It records prefill, time-to-first-token, decode, completion, resident-memory, and DSpark draft/accepted-token metrics. The packaged server is CPU-only; `FLOWLOCAL_CLEANUP_DSPARK=1` enables `draft-dspark` speculative decoding.
 
+## Codex and Claude Code prompt formatting
+
+Harness detection is automatic for normal Claude Code and Codex sessions in Windows Terminal; no alternate launcher or hook setup is required. At shortcut-down, FlowLocal starts a background read of the captured terminal's fixed harness chrome. It recognizes Codex's `model:` line and Claude Code's version/model/effort header, stores only the harness, model, and effort, and never waits for detection before starting or stopping recording.
+
+The bundled adapters remain an optional fallback for terminal hosts that do not expose their text surface through Windows UI Automation. They provide the same metadata through a session-only title and do not change saved model, permission, or harness configuration.
+
+Detection does not depend on the guide catalog. Known IDs select the stored official-guide adaptation; unlisted models use the built-in general rewrite-only policy. Missing metadata stays explicitly unknown rather than being guessed from a project title or global default.
+
+The local LFM model only formats the dictated request. Coding cleanup uses llama.cpp constrained decoding to retain substantive words, order, case, identifiers, constraints, and dictated plan steps, while allowing punctuation, line breaks, bullets, and leading-filler removal. It cannot generate an answer, code, a solution, or additional plan steps. Validation remains in place; a failed or truncated completion falls back to the raw transcript. History cleanup retries use the saved coding target, not whichever harness happens to be active later.
+
+Settings → History shows the captured **harness, coding model, and effort**, alongside the ASR and cleanup model. Older rows remain readable; unavailable detection metadata is shown as unknown rather than inferred retroactively.
+
+Concise adaptations are bundled in `prompting-guides`, with explicit model IDs, official source URLs, and retrieval dates. The registry covers Codex, GPT, OpenAI reasoning, and Claude families; it uses general provider guidance where no separate model-specific adaptation is stored. Sources include [OpenAI prompt engineering](https://developers.openai.com/api/docs/guides/prompt-engineering), [Codex prompting](https://developers.openai.com/cookbook/examples/gpt-5/codex_prompting_guide), [OpenAI reasoning guidance](https://developers.openai.com/api/docs/guides/reasoning-best-practices), and [Claude prompting best practices](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices). Agent-execution advice is not injected into your request.
+
+**Detection boundary:** requires a terminal that exposes application-set titles. A pinned tab title, IDE terminal whose title never reaches the foreground window, remote harness without forwarded signals, or unsupported harness version can leave detection unknown. Timestamped signals expire after five minutes. Long Codex model IDs require fresh matching hook metadata; if unavailable or stale, the app uses the general policy rather than guessing. A title identifies the harness-selected model, not an independently verified model behind a gateway.
+
 ## Build instructions
 
 From the repository root in PowerShell:

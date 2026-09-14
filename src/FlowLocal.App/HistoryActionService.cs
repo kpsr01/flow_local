@@ -46,8 +46,8 @@ public sealed class HistoryActionService(
             TotalDuration = null,
             InsertionMethod = null,
             RetryCount = entry.RetryCount + 1,
-            State = RecordingState.Cleaning,
-            ErrorCode = DictationErrorCode.None
+            State = RecordingState.Failed,
+            ErrorCode = DictationErrorCode.Interrupted
         }, cancellationToken);
     }
 
@@ -55,19 +55,28 @@ public sealed class HistoryActionService(
     {
         var raw = new RawTranscript(Require(entry.RawTranscript, "This session has no raw transcript."));
         var started = Stopwatch.GetTimestamp();
-        var cleaned = await cleaner.CleanAsync(raw, entry.Style ?? TranscriptStyleResolver.Resolve(entry.OutputCategory ?? OutputContextCategory.General), cancellationToken);
+        var style = entry.Style ?? TranscriptStyleResolver.Resolve(entry.OutputCategory ?? OutputContextCategory.General);
+        var target = entry.CodingTarget ?? (entry.OutputCategory is OutputContextCategory.CodeEditor or OutputContextCategory.Terminal
+            ? new CodingTarget(entry.TargetApplication ?? "unknown", null, null, "history", "No saved model signal")
+            : null);
+        var cleaned = target is not null && cleaner is SottoTranscriptCleaner sotto
+            ? await sotto.CleanCodingAsync(raw, style, target, PromptPolicyRegistry.Default.Get(target), cancellationToken)
+            : await cleaner.CleanAsync(raw, style, cancellationToken);
         if (!CleanupResultValidator.TryValidate(raw, cleaned, out var reason))
             throw new InvalidOperationException(reason);
+        if (target is not null && !CodingCleanupValidator.PreservesSubstantiveWords(raw, cleaned))
+            throw new InvalidOperationException("Cleanup changed the dictated request. The saved transcript was not replaced.");
         await history.UpdateAsync(entry with
         {
+            CodingTarget = target,
             CleanedTranscript = cleaned.Text,
             CleanupDuration = Stopwatch.GetElapsedTime(started),
             InsertionDuration = null,
             TotalDuration = null,
             InsertionMethod = null,
             RetryCount = entry.RetryCount + 1,
-            State = RecordingState.Inserting,
-            ErrorCode = DictationErrorCode.None
+            State = RecordingState.Failed,
+            ErrorCode = DictationErrorCode.Interrupted
         }, cancellationToken);
     }
 

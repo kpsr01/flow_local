@@ -64,6 +64,13 @@ public sealed class SqliteHistoryRepository : IHistoryRepository
             CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
             """;
         await command.ExecuteNonQueryAsync(cancellationToken);
+        // Additive migration preserves history created by older versions.
+        command.CommandText = "SELECT COUNT(*) FROM pragma_table_info('history') WHERE name = 'coding_target_json'";
+        if (Convert.ToInt64(await command.ExecuteScalarAsync(cancellationToken)) == 0)
+        {
+            command.CommandText = "ALTER TABLE history ADD COLUMN coding_target_json TEXT";
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
     }
 
     public Task CreateAsync(HistoryEntry entry, CancellationToken cancellationToken) => SaveAsync(entry, false, cancellationToken);
@@ -308,7 +315,8 @@ public sealed class SqliteHistoryRepository : IHistoryRepository
         ParseEnum<OutputContextCategory>(r, 11), DeserializeStyle(r, 12), GetString(r, 13), GetString(r, 14),
         ParseDuration(r, 15), ParseDuration(r, 16), ParseDuration(r, 17), ParseDuration(r, 18),
         ParseEnum<TextInsertionMethod>(r, 19), Enum.Parse<RecordingState>(r.GetString(20)),
-        Enum.Parse<DictationErrorCode>(r.GetString(21)), r.GetInt32(22));
+        Enum.Parse<DictationErrorCode>(r.GetString(21)), r.GetInt32(22),
+        r.IsDBNull(23) ? null : JsonSerializer.Deserialize<CodingTarget>(r.GetString(23), JsonOptions));
 
     private static void AddEntry(SqliteCommand c, HistoryEntry e)
     {
@@ -322,6 +330,7 @@ public sealed class SqliteHistoryRepository : IHistoryRepository
         Add(c, "$cleanup_duration_ticks", e.CleanupDuration?.Ticks); Add(c, "$insertion_duration_ticks", e.InsertionDuration?.Ticks);
         Add(c, "$total_duration_ticks", e.TotalDuration?.Ticks); Add(c, "$insertion_method", Stable(e.InsertionMethod));
         Add(c, "$state", Stable(e.State)); Add(c, "$error_code", Stable(e.ErrorCode)); Add(c, "$retry_count", e.RetryCount);
+        Add(c, "$coding_target_json", e.CodingTarget is null ? null : JsonSerializer.Serialize(e.CodingTarget, JsonOptions));
     }
 
     private static void Add(SqliteCommand command, string name, object? value) => command.Parameters.AddWithValue(name, value ?? DBNull.Value);
@@ -454,7 +463,7 @@ public sealed class SqliteHistoryRepository : IHistoryRepository
     private static extern bool SetFileInformationByHandle(
         SafeFileHandle file, int fileInformationClass, ref FileDispositionInfo fileInformation, uint bufferSize);
 
-    private const string Columns = "id, created_at, recording_started_at, recording_ended_at, duration_ticks, raw_transcript, cleaned_transcript, audio_file_path, target_application, target_executable, domain, output_category, style_json, asr_model_name, cleanup_model_name, asr_duration_ticks, cleanup_duration_ticks, insertion_duration_ticks, total_duration_ticks, insertion_method, state, error_code, retry_count";
-    private const string Values = "$id, $created_at, $recording_started_at, $recording_ended_at, $duration_ticks, $raw_transcript, $cleaned_transcript, $audio_file_path, $target_application, $target_executable, $domain, $output_category, $style_json, $asr_model_name, $cleanup_model_name, $asr_duration_ticks, $cleanup_duration_ticks, $insertion_duration_ticks, $total_duration_ticks, $insertion_method, $state, $error_code, $retry_count";
-    private const string UpdateAssignments = "created_at=$created_at, recording_started_at=$recording_started_at, recording_ended_at=$recording_ended_at, duration_ticks=$duration_ticks, raw_transcript=$raw_transcript, cleaned_transcript=$cleaned_transcript, audio_file_path=$audio_file_path, target_application=$target_application, target_executable=$target_executable, domain=$domain, output_category=$output_category, style_json=$style_json, asr_model_name=$asr_model_name, cleanup_model_name=$cleanup_model_name, asr_duration_ticks=$asr_duration_ticks, cleanup_duration_ticks=$cleanup_duration_ticks, insertion_duration_ticks=$insertion_duration_ticks, total_duration_ticks=$total_duration_ticks, insertion_method=$insertion_method, state=$state, error_code=$error_code, retry_count=$retry_count";
+    private const string Columns = "id, created_at, recording_started_at, recording_ended_at, duration_ticks, raw_transcript, cleaned_transcript, audio_file_path, target_application, target_executable, domain, output_category, style_json, asr_model_name, cleanup_model_name, asr_duration_ticks, cleanup_duration_ticks, insertion_duration_ticks, total_duration_ticks, insertion_method, state, error_code, retry_count, coding_target_json";
+    private const string Values = "$id, $created_at, $recording_started_at, $recording_ended_at, $duration_ticks, $raw_transcript, $cleaned_transcript, $audio_file_path, $target_application, $target_executable, $domain, $output_category, $style_json, $asr_model_name, $cleanup_model_name, $asr_duration_ticks, $cleanup_duration_ticks, $insertion_duration_ticks, $total_duration_ticks, $insertion_method, $state, $error_code, $retry_count, $coding_target_json";
+    private const string UpdateAssignments = "created_at=$created_at, recording_started_at=$recording_started_at, recording_ended_at=$recording_ended_at, duration_ticks=$duration_ticks, raw_transcript=$raw_transcript, cleaned_transcript=$cleaned_transcript, audio_file_path=$audio_file_path, target_application=$target_application, target_executable=$target_executable, domain=$domain, output_category=$output_category, style_json=$style_json, asr_model_name=$asr_model_name, cleanup_model_name=$cleanup_model_name, asr_duration_ticks=$asr_duration_ticks, cleanup_duration_ticks=$cleanup_duration_ticks, insertion_duration_ticks=$insertion_duration_ticks, total_duration_ticks=$total_duration_ticks, insertion_method=$insertion_method, state=$state, error_code=$error_code, retry_count=$retry_count, coding_target_json=$coding_target_json";
 }

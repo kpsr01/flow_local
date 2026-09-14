@@ -1,0 +1,18 @@
+{
+  "model": "gpt-6-astra",
+  "models": [],
+  "modelFamily": "GPT-6 Astra",
+  "sourceReference": "https://developers.openai.com/api/docs/guides/latest-model/gpt-6-astra.md",
+  "sourceDate": "2026-09-13",
+  "policies": {
+    "default": {
+      "reasoningModes": [],
+      "rules": [
+        "Keep the requested outcome, scope, and provided success criteria distinct and concise.",
+        "Preserve explicit autonomy and stopping boundaries; do not invent a workflow or verification checklist.",
+        "Preserve the user's stated goal, scope, constraints, uncertainty, and requested output; never invent details.",
+        "Retain all dictated plan steps in order. Do not answer, execute, solve, or add a plan, tests, tools, examples, or delegation."
+      ]
+    }
+  }
+}

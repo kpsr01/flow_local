@@ -66,10 +66,11 @@ public sealed class SottoTranscriptCleaner : ITranscriptCleaner, ICleanupBackend
     internal Task<CleanTranscriptResult> CleanCodingAsync(
         RawTranscript transcript, TranscriptStyle style, CodingTarget target, PromptingPolicy policy,
         CancellationToken cancellationToken) =>
-        CleanCoreAsync(transcript, DictationPromptAdapter.Build(transcript, target, policy), cancellationToken);
+        CleanCoreAsync(transcript, DictationPromptAdapter.Build(transcript, target, policy), cancellationToken,
+            CodingCleanupValidator.CreateFormattingGrammar(transcript));
 
     private async Task<CleanTranscriptResult> CleanCoreAsync(
-        RawTranscript transcript, string prompt, CancellationToken cancellationToken)
+        RawTranscript transcript, string prompt, CancellationToken cancellationToken, string? grammar = null)
     {
         ArgumentNullException.ThrowIfNull(transcript);
         await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
@@ -82,6 +83,7 @@ public sealed class SottoTranscriptCleaner : ITranscriptCleaner, ICleanupBackend
                 Content = JsonContent.Create(new
                 {
                     prompt,
+                    grammar = grammar ?? "",
                     n_predict = Math.Clamp(transcript.Text.Length / 2, 32, 256),
                     temperature = 0,
                     top_k = 1,

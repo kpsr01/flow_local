@@ -264,8 +264,8 @@ public partial class OverlayWindow : Window
         _completedHideClock.Stop();
         _hintHideClock.Stop();
 
-        // Idle pill is plain until hover — the mic glyph only appears via Root_MouseEnter.
-        MiniDot.Visibility = Visibility.Collapsed;
+        // Keep the idle mic visible; only the optional exit control appears on hover.
+        MiniDot.Visibility = mode == PillMode.Mini ? Visibility.Visible : Visibility.Collapsed;
         ExitPillButton.Visibility = Visibility.Collapsed;
         ActiveRow.Visibility = mode == PillMode.Mini ? Visibility.Collapsed : Visibility.Visible;
         // One pill identity in every state: same radius + ember outline, so expanding
@@ -468,16 +468,12 @@ public partial class OverlayWindow : Window
     }
     private void Root_MouseEnter(object sender, System.Windows.Input.MouseEventArgs e)
     {
-        if (_mode != PillMode.Mini) return;
-        MiniDot.Visibility = Visibility.Visible;
-        ExitPillButton.Visibility = Visibility.Visible;
+        if (_mode == PillMode.Mini) ExitPillButton.Visibility = Visibility.Visible;
     }
 
     private void Root_MouseLeave(object sender, System.Windows.Input.MouseEventArgs e)
     {
-        if (_mode != PillMode.Mini) return;
-        MiniDot.Visibility = Visibility.Collapsed;
-        ExitPillButton.Visibility = Visibility.Collapsed;
+        if (_mode == PillMode.Mini) ExitPillButton.Visibility = Visibility.Collapsed;
     }
 
     private void Root_ClickStart(object sender, System.Windows.Input.MouseButtonEventArgs e)

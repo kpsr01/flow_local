@@ -33,7 +33,6 @@ internal static class CodingContextDetector
         if (string.IsNullOrWhiteSpace(text)) return null;
         var app = ApplicationNameCatalog.Normalize(executable);
         var environment = app.DisplayName;
-
         var adapters = Regex.Matches(text,
             @"FlowLocal (?<kind>OMP|Pi):\s*(?<model>[A-Za-z0-9._/:@+\[\]-]+)\s*/\s*(?<reasoning>[A-Za-z0-9._/:@+\[\]-]+)",
             RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
@@ -51,9 +50,10 @@ internal static class CodingContextDetector
         }
 
         if (app.ExecutableName is "chatgpt" or "codex")
-            return DetectCodexDesktop(environment, text);
+            return DetectOpenAiSurface(environment, text,
+                app.ExecutableName == "codex" ? "Codex Desktop" : "ChatGPT Desktop");
         if (app.ExecutableName == "claude")
-            return DetectClaudeDesktop(environment, text);
+            return DetectClaudeSurface(environment, text, "Claude Desktop");
 
         var codex = Regex.Match(text,
             @"OpenAI Codex[\s\S]{0,600}?\bmodel:\s+(?<model>[A-Za-z0-9._/:@+\[\]-]+)\s+(?<reasoning>none|minimal|low|medium|high|xhigh)\b",
@@ -71,9 +71,10 @@ internal static class CodingContextDetector
         {
             var model = statusLine.Groups["model"].Value;
             var reasoning = statusLine.Groups["reasoning"].Value;
-            return new CodingTarget(environment, model == "unknown" ? null : model,
-                reasoning == "unknown" ? null : reasoning, "terminal-uia",
-                model == "unknown" ? "Model unavailable" : null, "Claude Code");
+            var valid = SafeId(model) && SafeId(reasoning);
+            return new CodingTarget(environment, valid && model != "unknown" ? model : null,
+                valid && reasoning != "unknown" ? reasoning : null, "terminal-uia",
+                !valid ? "Invalid model signal" : model == "unknown" ? "Model unavailable" : null, "Claude Code");
         }
 
         var claude = Regex.Match(text,
@@ -86,14 +87,16 @@ internal static class CodingContextDetector
                     claude.Groups["reasoning"].Value.ToLowerInvariant(), "terminal-uia", Harness: "Claude Code")
                 : new CodingTarget(environment, null, null, "terminal-uia", "Model line unavailable", "Claude Code");
 
-        if (text.Contains("omp v", StringComparison.OrdinalIgnoreCase))
+        var ompMatches = Regex.Matches(text,
+            @"(?m)^\s*(?:π\s*·\s*)?(?:\S+\s+\S+\s*·\s*)?◒\s+(?<model>[A-Za-z0-9][A-Za-z0-9._/:@+\[\] -]{0,100}?)\s+·\s*📁");
+        if (ompMatches.Count > 0)
         {
-            var matches = Regex.Matches(text,
-                @"(?m)^\s*π\s*·\s*\S+\s+(?<model>[A-Za-z0-9][A-Za-z0-9._/:@+\[\] -]{0,100}?)\s+·");
-            var model = matches.Count == 0 ? null : NormalizeDisplayedModel(matches[^1].Groups["model"].Value);
+            var model = NormalizeDisplayedModel(ompMatches[^1].Groups["model"].Value);
             return new CodingTarget(environment, model, null, "terminal-uia",
                 model is null ? "Model line unavailable" : null, "Oh My Pi");
         }
+        if (text.Contains("omp v", StringComparison.OrdinalIgnoreCase))
+            return new CodingTarget(environment, null, null, "terminal-uia", "Model line unavailable", "Oh My Pi");
 
         if (Regex.IsMatch(text, @"(?m)^\s*pi v\d", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
         {
@@ -110,45 +113,50 @@ internal static class CodingContextDetector
         return null;
     }
 
-    private static CodingTarget? DetectCodexDesktop(string environment, string text)
+    private static CodingTarget DetectOpenAiSurface(string environment, string text, string harness)
     {
-        if (!text.Contains("Selected Work", StringComparison.OrdinalIgnoreCase)) return null;
         var match = Regex.Match(text,
-            @"\b(?<model>GPT-[A-Za-z0-9][A-Za-z0-9._ -]{0,80}?)\s+(?<reasoning>none|minimal|light|medium|high|extra high|max|ultra|persistent)\b",
-            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            @"(?im)^\s*(?:Model(?:[ \t]+selector)?(?:,[ \t]*current[ \t]+model[ \t]+is)?[ \t]*:?[ \t]*)?(?<model>GPT-[A-Za-z0-9._-]+(?:[ \t]+(?!(?:none|minimal|light|low|medium|high|extra[ \t]+high|max|ultra|persistent)\b)[A-Za-z0-9._-]+){0,4})(?:[ \t]+(?<reasoning>none|minimal|light|low|medium|high|extra[ \t]+high|max|ultra|persistent))?",
+            RegexOptions.CultureInvariant);
         if (!match.Success)
-            return new CodingTarget(environment, null, null, "desktop-uia", "Model control unavailable", "Codex Desktop");
-        var reasoning = match.Groups["reasoning"].Value.ToLowerInvariant() switch
+            return new CodingTarget(environment, null, null, "desktop-uia", "Model control unavailable", harness);
+        var reasoning = match.Groups["reasoning"].Success
+            ? match.Groups["reasoning"].Value
+            : Regex.Match(text,
+                @"(?im)^\s*(?:Selected\s+)?(?<reasoning>none|minimal|light|low|medium|high|extra\s+high|max|ultra|persistent)\s*$",
+                RegexOptions.CultureInvariant).Groups["reasoning"].Value;
+        reasoning = reasoning.ToLowerInvariant() switch
         {
             "light" => "low",
             "extra high" => "xhigh",
+            "" => "",
             var value => value
         };
         return new CodingTarget(environment, NormalizeDisplayedModel(match.Groups["model"].Value),
-            reasoning, "desktop-uia", Harness: "Codex Desktop");
+            reasoning.Length == 0 ? null : reasoning, "desktop-uia", Harness: harness);
     }
 
-    private static CodingTarget? DetectClaudeDesktop(string environment, string text)
+    private static CodingTarget DetectClaudeSurface(string environment, string text, string harness)
     {
-        if (!text.Contains("Selected Code", StringComparison.OrdinalIgnoreCase)) return null;
         var model = Regex.Match(text,
-            @"(?m)^(?:Claude\s+)?(?<family>Opus|Sonnet|Haiku)\s+(?<version>\d+(?:\.\d+)*)(?:\s*\([^\r\n)]*\))?\s*$",
-            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            @"(?im)^\s*(?:Model\s*:\s*)?(?:Claude\s+)?(?<family>Opus|Sonnet|Haiku)\s+(?<version>\d+(?:\.\d+)*)",
+            RegexOptions.CultureInvariant);
         if (!model.Success)
-            return new CodingTarget(environment, null, null, "desktop-uia", "Model control unavailable", "Claude Desktop");
-        var effort = Regex.Match(text[(model.Index + model.Length)..],
-            @"(?m)^\s*(?<reasoning>low|medium|high|max)(?:\s+effort)?\s*$",
-            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            return new CodingTarget(environment, null, null, "desktop-uia", "Model control unavailable", harness);
+        var effort = Regex.Match(text,
+            @"(?im)^\s*(?:Selected\s+)?(?<reasoning>low|medium|high|max)(?:\s+effort)?\s*$",
+            RegexOptions.CultureInvariant);
         return new CodingTarget(environment,
             ClaudeModelId(model.Groups["family"].Value, model.Groups["version"].Value),
             effort.Success ? effort.Groups["reasoning"].Value.ToLowerInvariant() : null,
-            "desktop-uia", Harness: "Claude Desktop");
+            "desktop-uia", Harness: harness);
     }
 
     private static CodingTarget? DetectDesktopSurface(ActiveTarget target, CancellationToken cancellationToken)
     {
         try
         {
+            RequestAccessibility(target.WindowHandle);
             cancellationToken.ThrowIfCancellationRequested();
             var root = AutomationElement.FromHandle(target.WindowHandle);
             var nodes = root.FindAll(TreeScope.Descendants, new OrCondition(
@@ -181,6 +189,11 @@ internal static class CodingContextDetector
 
     private static bool IsDesktopHarness(string executable) =>
         ApplicationNameCatalog.Normalize(executable).ExecutableName is "chatgpt" or "codex" or "claude";
+
+
+    private static void RequestAccessibility(nint windowHandle) =>
+        NativeMethods.SendMessageTimeout(windowHandle, NativeMethods.WmGetObject, 0, NativeMethods.ObjIdClient,
+            NativeMethods.SmtoAbortIfHung, 100, out _);
 
     private static string ClaudeModelId(string family, string version) =>
         $"claude-{family.ToLowerInvariant()}-{version.Replace('.', '-')}";

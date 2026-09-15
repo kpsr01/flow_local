@@ -43,7 +43,10 @@ public sealed class CodingPromptPolicyTests
         "Claude Code v2.1.270\r\nOpus 5 (1M context) with low effort · API Usage Billing",
         "Claude Code", "claude-opus-5", "low")]
     [InlineData(
-        "omp v18.2.0\r\nπ · ◒ GPT-5.6-Sol · 📁 ~/repo · ⑂ main",
+        "π · ◒ GPT-5.6-Sol · 📁 ~/repo · ⑂ main",
+        "Oh My Pi", "gpt-5.6-sol", null)]
+    [InlineData(
+        "⠴ 3m · ◒ GPT-5.6-Sol · 📁 ~/repo · ⑂ main",
         "Oh My Pi", "gpt-5.6-sol", null)]
     [InlineData(
         "pi v0.60.0\r\n~/repo\r\n?%/272k                     gpt-5.4 • high",
@@ -79,13 +82,17 @@ public sealed class CodingPromptPolicyTests
     [InlineData(
         "ChatGPT.exe",
         "Chat\r\nSelected Work\r\nFull access\r\nGPT-5.4 Mini Medium None Minimal Light Medium High Extra High Max Ultra Persistent\r\nChoose project",
-        "Codex Desktop", "gpt-5.4-mini", "medium")]
+        "ChatGPT Desktop", "gpt-5.4-mini", "medium")]
+    [InlineData("ChatGPT.exe", "Selected Chat\r\nGPT-5.4 Mini", "ChatGPT Desktop", "gpt-5.4-mini", null)]
+    [InlineData("codex.exe", "Selected Code\r\nGPT-5.6 Codex\r\nSelected High", "Codex Desktop", "gpt-5.6-codex", "high")]
+    [InlineData("claude.exe", "Selected Chat\r\nModel: Sonnet 5 Extra", "Claude Desktop", "claude-sonnet-5", null)]
+    [InlineData("claude.exe", "Selected Cowork\r\nModel: Sonnet 5 Extra", "Claude Desktop", "claude-sonnet-5", null)]
     [InlineData(
         "claude.exe",
         "Chat\r\nCowork\r\nSelected Code\r\nOpus 4.6\r\nHigh\r\nAccept edits",
         "Claude Desktop", "claude-opus-4-6", "high")]
-    public void CodingContext_ReadsDesktopCodingControls(
-        string executable, string controls, string harness, string model, string reasoning)
+    public void CodingContext_ReadsDesktopControlsInEveryMode(
+        string executable, string controls, string harness, string model, string? reasoning)
     {
         var target = CodingContextDetector.DetectVisibleText(executable, controls);
 
@@ -95,11 +102,6 @@ public sealed class CodingPromptPolicyTests
         Assert.Equal("desktop-uia", target?.SignalSource);
     }
 
-    [Theory]
-    [InlineData("ChatGPT.exe", "Selected Chat\r\nGPT-5.4 Mini\r\nMedium")]
-    [InlineData("claude.exe", "Selected Chat\r\nOpus 4.6\r\nHigh")]
-    public void CodingContext_DoesNotTreatDesktopChatAsCoding(string executable, string controls) =>
-        Assert.Null(CodingContextDetector.DetectVisibleText(executable, controls));
 
     [Fact]
     public void CodingCleanupValidatorRejectsInventedSubstantiveWords()

@@ -16,6 +16,9 @@ internal static class NativeMethods
     internal const int VkRWin = 0x5C;
     internal const uint TokenQuery = 0x0008;
     internal const int TokenIntegrityLevel = 25;
+    internal const uint WmGetObject = 0x003D;
+    internal const uint SmtoAbortIfHung = 0x0002;
+    internal static readonly nint ObjIdClient = -4;
 
     internal delegate nint LowLevelKeyboardProc(int code, nint wParam, nint lParam);
 
@@ -99,6 +102,16 @@ internal static class NativeMethods
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, [MarshalAs(UnmanagedType.Bool)] bool attach);
+    [DllImport("user32.dll", SetLastError = true)]
+    internal static extern nint SendMessageTimeout(
+        nint windowHandle,
+        uint message,
+        nint wParam,
+        nint lParam,
+        uint flags,
+        uint timeout,
+        out nint result);
+
 
     [DllImport("kernel32.dll")]
     internal static extern uint GetCurrentThreadId();

@@ -37,7 +37,7 @@ This list describes the current implementation rather than the broader project s
 - Built-in domain/application tables are finite. Unknown targets use control hints, generic browser, or the universal/general fallback; users must add overrides for other targets.
 - Overrides can choose categories/styles but do not add arbitrary classifier code or URL rules. Full URLs are rejected.
 - Cleanup is for faithful formatting, not summarization, answering questions, executing prompts, or inventing code and plans.
-- Coding-harness detection needs a foreground terminal exposing fixed TUI chrome, a bundled Pi/Oh My Pi status extension, or an accessible Claude Desktop Code/Codex Desktop Work control tree. Pinned/custom terminal layouts, integrated or remote terminals, and Electron builds without exposed web controls can leave metadata unknown. `--force-renderer-accessibility` is required for desktop builds that otherwise hide those controls.
+- Coding-harness detection needs a foreground terminal exposing fixed TUI chrome, a bundled Pi/Oh My Pi status extension, or accessible model controls in Claude Desktop or ChatGPT/Codex Desktop. Pinned/custom terminal layouts, integrated or remote terminals, and Electron controls that remain inaccessible after FlowLocal requests Chromium accessibility can leave metadata unknown.
 - Model IDs are not allowlisted: unavailable metadata remains unknown and unlisted IDs use general rewrite-only guidance. Timestamped Codex/Claude terminal signals expire after five minutes, and long truncated Codex IDs need matching hook metadata. Detection reports the harness-selected model, not the actual backend behind an opaque gateway.
 
 ## Insertion

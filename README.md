@@ -36,7 +36,7 @@ Copy-Item .\integrations\pi\flowlocal.ts "$HOME\.pi\agent\extensions\flowlocal.t
 
 The extensions add one local status value; they do not change the selected model, permissions, or saved harness configuration. Existing Codex and Claude Code adapters remain optional fallbacks for terminal hosts that do not expose their text surface through Windows UI Automation.
 
-Claude Desktop **Code** and Codex Desktop **Work** are detected from their selected tab and visible model/effort controls. Ordinary Chat/Claude conversations are not treated as coding sessions. Electron builds that hide web controls from Windows UI Automation must be launched with Chromium's `--force-renderer-accessibility`; otherwise desktop harness metadata remains unknown.
+Claude Desktop and ChatGPT/Codex Desktop are detected in Chat, Cowork/Work, and Code modes from their visible model and effort controls. FlowLocal requests Chromium accessibility when the desktop app has not exposed its web controls yet; no alternate launch flag is normally required.
 
 Detection does not depend on the guide catalog. Known IDs select the stored official-guide adaptation; unlisted models use the built-in general rewrite-only policy. Missing metadata stays explicitly unknown rather than being guessed from a project title or global default.
 
@@ -46,7 +46,7 @@ Settings → History shows the captured **harness, coding model, and effort**, a
 
 Concise adaptations are bundled in `prompting-guides`, with explicit model IDs, official source URLs, and retrieval dates. The registry covers Codex, GPT, OpenAI reasoning, and Claude families; it uses general provider guidance where no separate model-specific adaptation is stored. Sources include [OpenAI prompt engineering](https://developers.openai.com/api/docs/guides/prompt-engineering), [Codex prompting](https://developers.openai.com/cookbook/examples/gpt-5/codex_prompting_guide), [OpenAI reasoning guidance](https://developers.openai.com/api/docs/guides/reasoning-best-practices), and [Claude prompting best practices](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices).
 
-**Detection boundary:** UI Automation must expose the terminal's fixed TUI chrome or the desktop app's coding controls. Pinned terminal titles, custom Pi/Oh My Pi layouts without the bundled extension, integrated terminals, remote sessions, and inaccessible Electron controls can leave detection unknown. Timestamped title signals expire after five minutes. A detected label identifies the harness-selected model, not an independently verified model behind a gateway.
+**Detection boundary:** UI Automation must expose the terminal's fixed TUI chrome or the desktop app's model controls. Pinned terminal titles, custom Pi/Oh My Pi layouts without the bundled extension, integrated terminals, remote sessions, and inaccessible Electron controls can leave detection unknown. Timestamped title signals expire after five minutes. A detected label identifies the harness-selected model, not an independently verified model behind a gateway.
 
 ## Build instructions
 

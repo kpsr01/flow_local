@@ -1,5 +1,6 @@
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Windows.Automation;
@@ -20,15 +21,39 @@ internal static class CodingContextDetector
         Task.Run(() =>
         {
             var title = Detect(target);
-            return !target.IsTerminal || title?.IsKnown == true
-                ? title
-                : DetectTerminalSurface(target, title, cancellationToken);
+            if (target.IsTerminal)
+                return title?.IsKnown == true ? title : DetectTerminalSurface(target, title, cancellationToken);
+            return IsDesktopHarness(target.ExecutableName)
+                ? DetectDesktopSurface(target, cancellationToken) ?? title
+                : title;
         }, CancellationToken.None);
 
     internal static CodingTarget? DetectVisibleText(string executable, string text)
     {
         if (string.IsNullOrWhiteSpace(text)) return null;
-        var environment = ApplicationNameCatalog.Normalize(executable).DisplayName;
+        var app = ApplicationNameCatalog.Normalize(executable);
+        var environment = app.DisplayName;
+
+        var adapters = Regex.Matches(text,
+            @"FlowLocal (?<kind>OMP|Pi):\s*(?<model>[A-Za-z0-9._/:@+\[\]-]+)\s*/\s*(?<reasoning>[A-Za-z0-9._/:@+\[\]-]+)",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        if (adapters.Count > 0)
+        {
+            var adapter = adapters[^1];
+            var model = adapter.Groups["model"].Value;
+            var reasoning = adapter.Groups["reasoning"].Value;
+            var harness = adapter.Groups["kind"].Value.Equals("OMP", StringComparison.OrdinalIgnoreCase)
+                ? "Oh My Pi" : "Pi";
+            var valid = SafeId(model) && SafeId(reasoning);
+            return new CodingTarget(environment, valid && model != "unknown" ? model : null,
+                valid && reasoning != "unknown" ? reasoning : null, "terminal-uia",
+                !valid ? "Invalid model signal" : model == "unknown" ? "Model unavailable" : null, harness);
+        }
+
+        if (app.ExecutableName is "chatgpt" or "codex")
+            return DetectCodexDesktop(environment, text);
+        if (app.ExecutableName == "claude")
+            return DetectClaudeDesktop(environment, text);
 
         var codex = Regex.Match(text,
             @"OpenAI Codex[\s\S]{0,600}?\bmodel:\s+(?<model>[A-Za-z0-9._/:@+\[\]-]+)\s+(?<reasoning>none|minimal|low|medium|high|xhigh)\b",
@@ -57,13 +82,114 @@ internal static class CodingContextDetector
         if (text.Contains("Claude Code v", StringComparison.OrdinalIgnoreCase))
             return claude.Success
                 ? new CodingTarget(environment,
-                    $"claude-{claude.Groups["family"].Value.ToLowerInvariant()}-{claude.Groups["version"].Value.Replace('.', '-')}",
+                    ClaudeModelId(claude.Groups["family"].Value, claude.Groups["version"].Value),
                     claude.Groups["reasoning"].Value.ToLowerInvariant(), "terminal-uia", Harness: "Claude Code")
                 : new CodingTarget(environment, null, null, "terminal-uia", "Model line unavailable", "Claude Code");
+
+        if (text.Contains("omp v", StringComparison.OrdinalIgnoreCase))
+        {
+            var matches = Regex.Matches(text,
+                @"(?m)^\s*π\s*·\s*\S+\s+(?<model>[A-Za-z0-9][A-Za-z0-9._/:@+\[\] -]{0,100}?)\s+·");
+            var model = matches.Count == 0 ? null : NormalizeDisplayedModel(matches[^1].Groups["model"].Value);
+            return new CodingTarget(environment, model, null, "terminal-uia",
+                model is null ? "Model line unavailable" : null, "Oh My Pi");
+        }
+
+        if (Regex.IsMatch(text, @"(?m)^\s*pi v\d", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+        {
+            var matches = Regex.Matches(text,
+                @"(?m)(?<model>[A-Za-z0-9][A-Za-z0-9._/:@+\[\]-]{2,})\s+•\s+(?:thinking\s+)?(?<reasoning>off|none|minimal|low|medium|high|max|xhigh)\s*$",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            if (matches.Count == 0)
+                return new CodingTarget(environment, null, null, "terminal-uia", "Model line unavailable", "Pi");
+            var match = matches[^1];
+            return new CodingTarget(environment, match.Groups["model"].Value,
+                match.Groups["reasoning"].Value.ToLowerInvariant(), "terminal-uia", Harness: "Pi");
+        }
 
         return null;
     }
 
+    private static CodingTarget? DetectCodexDesktop(string environment, string text)
+    {
+        if (!text.Contains("Selected Work", StringComparison.OrdinalIgnoreCase)) return null;
+        var match = Regex.Match(text,
+            @"\b(?<model>GPT-[A-Za-z0-9][A-Za-z0-9._ -]{0,80}?)\s+(?<reasoning>none|minimal|light|medium|high|extra high|max|ultra|persistent)\b",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        if (!match.Success)
+            return new CodingTarget(environment, null, null, "desktop-uia", "Model control unavailable", "Codex Desktop");
+        var reasoning = match.Groups["reasoning"].Value.ToLowerInvariant() switch
+        {
+            "light" => "low",
+            "extra high" => "xhigh",
+            var value => value
+        };
+        return new CodingTarget(environment, NormalizeDisplayedModel(match.Groups["model"].Value),
+            reasoning, "desktop-uia", Harness: "Codex Desktop");
+    }
+
+    private static CodingTarget? DetectClaudeDesktop(string environment, string text)
+    {
+        if (!text.Contains("Selected Code", StringComparison.OrdinalIgnoreCase)) return null;
+        var model = Regex.Match(text,
+            @"(?m)^(?:Claude\s+)?(?<family>Opus|Sonnet|Haiku)\s+(?<version>\d+(?:\.\d+)*)(?:\s*\([^\r\n)]*\))?\s*$",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        if (!model.Success)
+            return new CodingTarget(environment, null, null, "desktop-uia", "Model control unavailable", "Claude Desktop");
+        var effort = Regex.Match(text[(model.Index + model.Length)..],
+            @"(?m)^\s*(?<reasoning>low|medium|high|max)(?:\s+effort)?\s*$",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        return new CodingTarget(environment,
+            ClaudeModelId(model.Groups["family"].Value, model.Groups["version"].Value),
+            effort.Success ? effort.Groups["reasoning"].Value.ToLowerInvariant() : null,
+            "desktop-uia", Harness: "Claude Desktop");
+    }
+
+    private static CodingTarget? DetectDesktopSurface(ActiveTarget target, CancellationToken cancellationToken)
+    {
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var root = AutomationElement.FromHandle(target.WindowHandle);
+            var nodes = root.FindAll(TreeScope.Descendants, new OrCondition(
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button),
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.RadioButton),
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.TabItem),
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ComboBox)));
+            var controls = new StringBuilder();
+            for (var i = 0; i < nodes.Count && controls.Length < 24_000; i++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var node = nodes[i];
+                var name = node.Current.Name;
+                if (node.Current.IsOffscreen || string.IsNullOrWhiteSpace(name)) continue;
+                var selected =
+                    node.TryGetCurrentPattern(TogglePattern.Pattern, out var toggle) &&
+                    toggle is TogglePattern { Current.ToggleState: ToggleState.On } ||
+                    node.TryGetCurrentPattern(SelectionItemPattern.Pattern, out var selection) &&
+                    selection is SelectionItemPattern { Current.IsSelected: true };
+                controls.AppendLine(selected ? $"Selected {name}" : name);
+            }
+            return DetectVisibleText(target.ExecutableName, controls.ToString());
+        }
+        catch (Exception exception) when (exception is ElementNotAvailableException or InvalidOperationException or
+            NotSupportedException or COMException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
+    private static bool IsDesktopHarness(string executable) =>
+        ApplicationNameCatalog.Normalize(executable).ExecutableName is "chatgpt" or "codex" or "claude";
+
+    private static string ClaudeModelId(string family, string version) =>
+        $"claude-{family.ToLowerInvariant()}-{version.Replace('.', '-')}";
+
+    private static string? NormalizeDisplayedModel(string value)
+    {
+        var normalized = Regex.Replace(value.Trim(), @"\s+", "-").ToLowerInvariant();
+        return SafeId(normalized) ? normalized : null;
+    }
     private static CodingTarget? DetectTerminalSurface(
         ActiveTarget target, CodingTarget? fallback, CancellationToken cancellationToken)
     {
@@ -122,11 +248,11 @@ internal static class CodingContextDetector
         }
         if (!title.StartsWith(TitlePrefix, StringComparison.Ordinal)) return unknown;
         var fields = title.Split('|');
-        if (fields.Length != 5 || fields[1] is not ("claude-code" or "codex") ||
+        if (fields.Length != 5 || fields[1] is not ("claude-code" or "codex" or "pi" or "omp") ||
             !long.TryParse(fields[4], out var timestamp))
             return unknown with { UnknownReason = "Invalid model signal" };
 
-        unknown = unknown with { Harness = fields[1] == "codex" ? "Codex" : "Claude Code" };
+        unknown = unknown with { Harness = fields[1] switch { "codex" => "Codex", "claude-code" => "Claude Code", "pi" => "Pi", _ => "Oh My Pi" } };
         if (timestamp > now.ToUnixTimeSeconds() || timestamp < now.ToUnixTimeSeconds() - SignalLifetimeSeconds)
             return unknown with { UnknownReason = "Stale model signal" };
         if (!SafeId(fields[2]) || !SafeId(fields[3]))

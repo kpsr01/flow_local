@@ -33,7 +33,7 @@ flowchart LR
   C --> D[(SQLite history)]
 ```
 
-On shortcut-down, `GlobalShortcutService` posts to the UI dispatcher and `DictationController` captures the foreground target. It immediately launches `CodingContextDetector` on the thread pool while app/browser context detection, history setup, ASR startup, and WASAPI capture continue normally. For unmodified Windows Terminal sessions, the detector reads only fixed Claude Code or Codex TUI chrome through UI Automation and extracts the displayed harness, model, and effort. Explicit title/status-line signals remain a fallback for terminal hosts without a readable UI Automation text surface. Recording startup and release never await metadata detection; a completed result is folded into the next history update and the cleanup snapshot, while missing metadata remains explicitly unknown.
+On shortcut-down, `GlobalShortcutService` posts to the UI dispatcher and `DictationController` captures the foreground target. It immediately launches `CodingContextDetector` on the thread pool while app/browser context detection, history setup, ASR startup, and WASAPI capture continue normally. In Windows Terminal, the detector reads fixed Codex CLI, Claude Code, Oh My Pi, or Pi chrome through UI Automation; bundled status extensions provide exact Oh My Pi/Pi metadata for compact or custom layouts. In Claude Desktop Code and Codex Desktop Work, it reads only selected tabs and visible button/combo-box labels. Explicit title/status-line signals remain terminal fallbacks. Recording startup and release never await metadata detection.
 
 On shortcut-up, capture stops and the WAV is finalized. The resident ASR session returns the complete English transcript. For coding targets, `PromptPolicyRegistry` selects a cached compact adaptation from `prompting-guides`, with a general rewrite-only fallback for unlisted or unavailable models. Missing effort retains the model's default policy. `SottoTranscriptCleaner` sends the selected prompt and a transcript-specific llama.cpp grammar to the resident LFM2.5 server. The grammar preserves substantive words, order, case, and technical tokens while permitting punctuation, layout, and leading-filler removal. `CleanupResultValidator` and `CodingCleanupValidator` reject invalid output. Cleanup is attempted twice, then falls back to the raw transcript with a recorded cleanup error. Non-coding cleanup retains its existing prompt and validation.
 
@@ -49,7 +49,7 @@ Both inference stages are local after prerequisites are present. First-time spee
 
 ## Context detection and classification
 
-`ActiveTargetTracker` snapshots process/window identity, focused UI Automation metadata, integrity information, and whether injection is safe. `ApplicationContextDetector` combines application metadata with `BrowserContextDetector`; browser detection extracts and normalizes a domain rather than retaining a full URL. `CodingContextDetector` accepts validated harness signals from supported code editors and terminals without a model allowlist. It never reads a global default to guess a live model. Window-title visibility is required; see the setup and detection boundaries in the README.
+`ActiveTargetTracker` snapshots process/window identity, focused UI Automation metadata, integrity information, and whether injection is safe. `ApplicationContextDetector` combines application metadata with `BrowserContextDetector`; browser detection extracts and normalizes a domain rather than retaining a full URL. `CodingContextDetector` accepts validated signals from supported terminals and desktop coding surfaces without a model allowlist. It never reads a global default to guess a live model.
 
 `OutputStyleClassifier` applies rules in this order:
 
@@ -61,7 +61,7 @@ Both inference stages are local after prerequisites are present. First-time spee
 6. generic browser;
 7. general fallback.
 
-Known domain groups include major webmail, AI chat, work/personal messaging, document, and Notion hosts. Known applications include Outlook/Word/Notepad/Notion/Obsidian/OneNote, common messaging clients, common code editors/IDEs, and Windows terminal/shell processes. The authoritative tables are `ClassificationRules.cs`; user overrides live in `%LOCALAPPDATA%\FlowLocal\application-styles.json` and take precedence. Session-only launchers and metadata scripts for both coding harnesses are packaged under `integrations`.
+Known domain groups include major webmail, AI chat, work/personal messaging, document, and Notion hosts. Known applications include Outlook/Word/Notepad/Notion/Obsidian/OneNote, common messaging clients, common code editors/IDEs, Claude, ChatGPT/Codex, and Windows terminal/shell processes. The authoritative tables are `ClassificationRules.cs`; user overrides live in `%LOCALAPPDATA%\FlowLocal\application-styles.json` and take precedence. Optional harness metadata adapters are packaged under `integrations`.
 
 ## Persistence and recovery
 

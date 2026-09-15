@@ -152,7 +152,7 @@ public partial class App : Application
             if (recovered.Count > 0) await _settingsWindow.RefreshHistoryAsync();
             await _dictation.InitializeAsync();
             _dictationReady = true;
-            // Wispr-style persistent idle pill: collapses to a tiny mic glyph instead of hiding.
+            // Keep the ready pill present without an idle-state icon.
             _overlayWindow.ShowReady();
         }
         catch (Exception exception)

@@ -264,8 +264,6 @@ public partial class OverlayWindow : Window
         _completedHideClock.Stop();
         _hintHideClock.Stop();
 
-        // Keep the idle mic visible; only the optional exit control appears on hover.
-        MiniDot.Visibility = mode == PillMode.Mini ? Visibility.Visible : Visibility.Collapsed;
         ExitPillButton.Visibility = Visibility.Collapsed;
         ActiveRow.Visibility = mode == PillMode.Mini ? Visibility.Collapsed : Visibility.Visible;
         // One pill identity in every state: same radius + ember outline, so expanding

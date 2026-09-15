@@ -99,12 +99,6 @@
                                   Opacity="0.5" Color="#000000" />
             </Border.Effect>
             <Grid>
-            <!-- Idle: ember dot at rest; mic glyph appears on hover -->
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
-                <TextBlock x:Name="MiniDot" Text="&#xE720;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
-                           FontSize="14" Foreground="#FFFF6B3D" VerticalAlignment="Center" Visibility="Collapsed"
-                           automation:AutomationProperties.Name="FlowLocal ready - click to dictate" />
-            </StackPanel>
 
             <!-- Active states -->
             <Grid x:Name="ActiveRow" Height="30" Visibility="Collapsed">

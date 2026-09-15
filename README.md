@@ -22,11 +22,21 @@ When running from source, the target model is discovered at `%LOCALAPPDATA%\Flow
 
 The app starts one resident `llama-server.exe` process, uses a deterministic LFM chat prompt, temperature 0, top-k 1, top-p 1, repetition penalty 1.05, a 2048-token context, and streams completion tokens. Startup warms the shared coding-instruction prefix; llama.cpp checkpoints reuse it across target-model policies. It records prefill, time-to-first-token, decode, completion, resident-memory, and DSpark draft/accepted-token metrics. The packaged server is CPU-only; `FLOWLOCAL_CLEANUP_DSPARK=1` enables `draft-dspark` speculative decoding.
 
-## Codex and Claude Code prompt formatting
+## Coding-harness prompt formatting
 
-Harness detection is automatic for normal Claude Code and Codex sessions in Windows Terminal; no alternate launcher or hook setup is required. At shortcut-down, FlowLocal starts a background read of the captured terminal's fixed harness chrome. It recognizes Codex's `model:` line and Claude Code's version/model/effort header, stores only the harness, model, and effort, and never waits for detection before starting or stopping recording.
+FlowLocal recognizes Codex CLI, Claude Code, Oh My Pi, and Pi in Windows Terminal. It reads fixed visible harness chrome at shortcut-down and stores only the harness, selected model, and reasoning/effort level. Native Codex, Claude Code, Oh My Pi, and Pi layouts work without alternate launchers when their model metadata is visible.
 
-The bundled adapters remain an optional fallback for terminal hosts that do not expose their text surface through Windows UI Automation. They provide the same metadata through a session-only title and do not change saved model, permission, or harness configuration.
+For exact Oh My Pi and Pi metadata across compact/custom layouts, copy the bundled extension into the harness's global extension directory:
+
+```powershell
+New-Item -ItemType Directory -Force "$HOME\.omp\agent\extensions", "$HOME\.pi\agent\extensions"
+Copy-Item .\integrations\oh-my-pi\flowlocal.ts "$HOME\.omp\agent\extensions\flowlocal.ts"
+Copy-Item .\integrations\pi\flowlocal.ts "$HOME\.pi\agent\extensions\flowlocal.ts"
+```
+
+The extensions add one local status value; they do not change the selected model, permissions, or saved harness configuration. Existing Codex and Claude Code adapters remain optional fallbacks for terminal hosts that do not expose their text surface through Windows UI Automation.
+
+Claude Desktop **Code** and Codex Desktop **Work** are detected from their selected tab and visible model/effort controls. Ordinary Chat/Claude conversations are not treated as coding sessions. Electron builds that hide web controls from Windows UI Automation must be launched with Chromium's `--force-renderer-accessibility`; otherwise desktop harness metadata remains unknown.
 
 Detection does not depend on the guide catalog. Known IDs select the stored official-guide adaptation; unlisted models use the built-in general rewrite-only policy. Missing metadata stays explicitly unknown rather than being guessed from a project title or global default.
 
@@ -34,9 +44,9 @@ The local LFM model only formats the dictated request. Coding cleanup uses llama
 
 Settings → History shows the captured **harness, coding model, and effort**, alongside the ASR and cleanup model. Older rows remain readable; unavailable detection metadata is shown as unknown rather than inferred retroactively.
 
-Concise adaptations are bundled in `prompting-guides`, with explicit model IDs, official source URLs, and retrieval dates. The registry covers Codex, GPT, OpenAI reasoning, and Claude families; it uses general provider guidance where no separate model-specific adaptation is stored. Sources include [OpenAI prompt engineering](https://developers.openai.com/api/docs/guides/prompt-engineering), [Codex prompting](https://developers.openai.com/cookbook/examples/gpt-5/codex_prompting_guide), [OpenAI reasoning guidance](https://developers.openai.com/api/docs/guides/reasoning-best-practices), and [Claude prompting best practices](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices). Agent-execution advice is not injected into your request.
+Concise adaptations are bundled in `prompting-guides`, with explicit model IDs, official source URLs, and retrieval dates. The registry covers Codex, GPT, OpenAI reasoning, and Claude families; it uses general provider guidance where no separate model-specific adaptation is stored. Sources include [OpenAI prompt engineering](https://developers.openai.com/api/docs/guides/prompt-engineering), [Codex prompting](https://developers.openai.com/cookbook/examples/gpt-5/codex_prompting_guide), [OpenAI reasoning guidance](https://developers.openai.com/api/docs/guides/reasoning-best-practices), and [Claude prompting best practices](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices).
 
-**Detection boundary:** requires a terminal that exposes application-set titles. A pinned tab title, IDE terminal whose title never reaches the foreground window, remote harness without forwarded signals, or unsupported harness version can leave detection unknown. Timestamped signals expire after five minutes. Long Codex model IDs require fresh matching hook metadata; if unavailable or stale, the app uses the general policy rather than guessing. A title identifies the harness-selected model, not an independently verified model behind a gateway.
+**Detection boundary:** UI Automation must expose the terminal's fixed TUI chrome or the desktop app's coding controls. Pinned terminal titles, custom Pi/Oh My Pi layouts without the bundled extension, integrated terminals, remote sessions, and inaccessible Electron controls can leave detection unknown. Timestamped title signals expire after five minutes. A detected label identifies the harness-selected model, not an independently verified model behind a gateway.
 
 ## Build instructions
 

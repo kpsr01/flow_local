@@ -42,8 +42,20 @@ public sealed class CodingPromptPolicyTests
     [InlineData(
         "Claude Code v2.1.270\r\nOpus 5 (1M context) with low effort · API Usage Billing",
         "Claude Code", "claude-opus-5", "low")]
+    [InlineData(
+        "omp v18.2.0\r\nπ · ◒ GPT-5.6-Sol · 📁 ~/repo · ⑂ main",
+        "Oh My Pi", "gpt-5.6-sol", null)]
+    [InlineData(
+        "pi v0.60.0\r\n~/repo\r\n?%/272k                     gpt-5.4 • high",
+        "Pi", "gpt-5.4", "high")]
+    [InlineData(
+        "FlowLocal OMP: openai-codex/gpt-5.6-sol / xhigh",
+        "Oh My Pi", "openai-codex/gpt-5.6-sol", "xhigh")]
+    [InlineData(
+        "FlowLocal Pi: anthropic/claude-opus-4-6 / max",
+        "Pi", "anthropic/claude-opus-4-6", "max")]
     public void CodingContext_ReadsNormalHarnessTerminalSurface(
-        string terminalText, string harness, string model, string reasoning)
+        string terminalText, string harness, string model, string? reasoning)
     {
         var target = CodingContextDetector.DetectVisibleText("WindowsTerminal.exe", terminalText);
 
@@ -52,6 +64,42 @@ public sealed class CodingPromptPolicyTests
         Assert.Equal(reasoning, target?.Reasoning);
         Assert.Equal("terminal-uia", target?.SignalSource);
     }
+
+    [Fact]
+    public void CodingContext_UsesLatestVisiblePiStatusAfterModelSwitch()
+    {
+        var target = CodingContextDetector.DetectVisibleText("WindowsTerminal.exe",
+            "FlowLocal Pi: old-model / low\r\nFlowLocal Pi: new-model / high");
+
+        Assert.Equal("new-model", target?.Model);
+        Assert.Equal("high", target?.Reasoning);
+    }
+
+    [Theory]
+    [InlineData(
+        "ChatGPT.exe",
+        "Chat\r\nSelected Work\r\nFull access\r\nGPT-5.4 Mini Medium None Minimal Light Medium High Extra High Max Ultra Persistent\r\nChoose project",
+        "Codex Desktop", "gpt-5.4-mini", "medium")]
+    [InlineData(
+        "claude.exe",
+        "Chat\r\nCowork\r\nSelected Code\r\nOpus 4.6\r\nHigh\r\nAccept edits",
+        "Claude Desktop", "claude-opus-4-6", "high")]
+    public void CodingContext_ReadsDesktopCodingControls(
+        string executable, string controls, string harness, string model, string reasoning)
+    {
+        var target = CodingContextDetector.DetectVisibleText(executable, controls);
+
+        Assert.Equal(harness, target?.Harness);
+        Assert.Equal(model, target?.Model);
+        Assert.Equal(reasoning, target?.Reasoning);
+        Assert.Equal("desktop-uia", target?.SignalSource);
+    }
+
+    [Theory]
+    [InlineData("ChatGPT.exe", "Selected Chat\r\nGPT-5.4 Mini\r\nMedium")]
+    [InlineData("claude.exe", "Selected Chat\r\nOpus 4.6\r\nHigh")]
+    public void CodingContext_DoesNotTreatDesktopChatAsCoding(string executable, string controls) =>
+        Assert.Null(CodingContextDetector.DetectVisibleText(executable, controls));
 
     [Fact]
     public void CodingCleanupValidatorRejectsInventedSubstantiveWords()
@@ -113,6 +161,8 @@ public sealed class CodingPromptPolicyTests
     [Theory]
     [InlineData("codex", "vendor/Future_Model:latest", "Codex")]
     [InlineData("claude-code", "anthropic.claude-next@20990101", "Claude Code")]
+    [InlineData("pi", "vendor/Future_Model:latest", "Pi")]
+    [InlineData("omp", "vendor/Future_Model:latest", "Oh My Pi")]
     public void ModelDetectionDoesNotRequireAnAllowlistOrEffort(string signal, string model, string harness)
     {
         var now = DateTimeOffset.UtcNow;

@@ -231,7 +231,7 @@ public sealed class CodingPromptPolicyTests
     }
 
     [Fact]
-    public void CodingPromptUsesSelectedModelGuideWithoutFewShotOverhead()
+    public void CodingPromptUsesSelectedModelGuideAlongsideFormattingExamples()
     {
         var target = new CodingTarget("Windows Terminal / Codex", "gpt-5.3-codex", "medium", "test");
         var prompt = DictationPromptAdapter.Build(new RawTranscript("fix src/auth.ts"),
@@ -239,6 +239,7 @@ public sealed class CodingPromptPolicyTests
 
         Assert.Contains("Prefer a direct task followed by requirement bullets", prompt);
         Assert.Contains("fix src/auth.ts", prompt);
+        Assert.Contains("Example output:", prompt);
         Assert.DoesNotContain("uh inspect src/auth.ts", prompt);
     }
 

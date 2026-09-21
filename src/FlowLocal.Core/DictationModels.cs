@@ -173,6 +173,11 @@ public static class CodingCleanupValidator
         ArgumentNullException.ThrowIfNull(raw);
         ArgumentNullException.ThrowIfNull(cleaned);
 
+        return PreservesWords(raw, cleaned) || PreservesWords(CodingRequestNormalizer.Normalize(raw), cleaned);
+    }
+
+    private static bool PreservesWords(RawTranscript raw, CleanTranscriptResult cleaned)
+    {
         var source = raw.Text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
         var sourceIndex = 0;
         var leadingFillersEnd = 0;
@@ -204,10 +209,13 @@ public static class CodingCleanupValidator
 
     public static string CreateFormattingGrammar(RawTranscript transcript)
     {
+        transcript = CodingRequestNormalizer.Normalize(transcript);
         var words = transcript.Text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
-        var structured = words.Length >= 12;
-        var grammar = new System.Text.StringBuilder(structured ? "root ::= prefix? " : "root ::= ");
+        var structured = words.Length >= 8;
+        var grammar = new System.Text.StringBuilder(structured ? "root ::= task? " : "root ::= ");
         var leading = true;
+        string? lastHeading = null;
+        var anchorClauses = CanAnchorClauses(words);
         for (var i = 0; i < words.Length; i++)
         {
             var word = words[i];
@@ -221,16 +229,70 @@ public static class CodingCleanupValidator
             grammar.Append(literal);
             if (word.All(char.IsLetter)) grammar.Append(" punct?");
             else if (i == words.Length - 1) grammar.Append(" \".\"?");
-            if (i < words.Length - 1) grammar.Append(" sep ");
+            if (i < words.Length - 1)
+            {
+                var heading = structured ? HeadingBefore(words, i + 1) : null;
+                if (heading is null) grammar.Append(" sep ");
+                else if (anchorClauses)
+                {
+                    // Unambiguous imperative requests get real clause boundaries even
+                    // when the small cleanup model prefers to copy one long paragraph.
+                    if (heading == lastHeading) grammar.Append(" \"\\n\" ");
+                    else grammar.Append(" \"\\n\\n\" ")
+                        .Append(heading.TrimEnd(':').ToLowerInvariant()).Append(' ');
+                    lastHeading = heading;
+                }
+                else grammar.Append(" (sep | \"\\n\\n\" ")
+                    .Append(heading.TrimEnd(':').ToLowerInvariant())
+                    .Append(") ");
+            }
         }
         if (structured)
-            grammar.Append("\nsep ::= \" \" | \"\\n\" prefix? | \"\\n\\n\" prefix?\n")
-                .Append("prefix ::= \"- \" | heading\nheading ::= ")
-                .AppendJoin(" | ", SectionLabels.Select(label => System.Text.Json.JsonSerializer.Serialize(label + "\n")))
-                .Append("\npunct ::= [.,;:!?]\n");
+            grammar.Append("\ntask ::= \"Task:\\n\"\n")
+                .Append("constraints ::= \"Constraints:\\n\"\noutput ::= \"Output:\\n\"\nsteps ::= \"Steps:\\n\"\ncontext ::= \"Context:\\n\"\n")
+                .Append("sep ::= \" \" | \"\\n\" | \"\\n\\n\" | \"\\n- \"\npunct ::= [.,;:!?]\n");
         else
             grammar.Append("\nsep ::= \" \" | \"\\n\" | \"\\n\\n\" | \"\\n- \"\npunct ::= [.,;:!?]\n");
         return grammar.ToString();
+    }
+
+    // Restrict generated labels to plausible clause starts. A heading must never be
+    // inserted mid-identifier or arbitrarily assign a deliverable to a plan section.
+    private static string? HeadingBefore(string[] words, int index)
+    {
+        if (index < 3) return null;
+        // Do not split a verb away from its negation, infinitive, or modal:
+        // "do not return a value" is one constraint, not a requested output.
+        if (words[index - 1].ToLowerInvariant() is "not" or "never" or "don't" or
+            "cannot" or "can't" or "to" or "without" or "must" or "should" or
+            "will" or "would" or "could" or "can" or "ever") return null;
+        var word = words[index].ToLowerInvariant();
+        var next = index + 1 < words.Length ? words[index + 1].ToLowerInvariant() : "";
+        return word switch
+        {
+            "keep" or "without" => "Constraints:",
+            "do" when next == "not" => "Constraints:",
+            "don't" => "Constraints:",
+            "return" when next is "a" or "the" or "only" => "Output:",
+            "summarize" => "Output:",
+            "explain" when next is "the" or "what" or "why" => "Output:",
+            "then" or "next" or "finally" when next is "fix" or "add" or "update" or "run" or
+                "test" or "check" or "inspect" or "review" or "implement" or "remove" => "Steps:",
+            "because" => "Context:",
+            _ => null
+        };
+    }
+
+    private static bool CanAnchorClauses(string[] words)
+    {
+        var first = words.FirstOrDefault(word => !IsSafeFiller(word))?.ToLowerInvariant();
+        if (first is not ("fix" or "add" or "update" or "refactor" or "implement" or
+            "create" or "build" or "inspect" or "review" or "investigate")) return false;
+        // Quoted/code content and subordinate clauses need the model's judgment:
+        // "fix X if Y", "investigate why ...", etc. must not acquire new scope.
+        return !words.Any(word => word.IndexOfAny(['"', '\'', '`']) >= 0 ||
+            word.Trim(',', '.', ';', ':', '!', '?').ToLowerInvariant() is
+                "if" or "unless" or "whether" or "why" or "how" or "when" or "where" or "that" or "because");
     }
     private static bool IsSafeFiller(string token) =>
         SafeFillers.Contains(token.Trim(',', '.', ';', ':', '!', '?'));

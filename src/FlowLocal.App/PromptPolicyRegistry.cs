@@ -31,6 +31,11 @@ internal sealed class PromptPolicyRegistry
     {
         var model = target.Model;
         if (model?.EndsWith("[1m]", StringComparison.OrdinalIgnoreCase) == true) model = model[..^4];
+        // Pi and Oh My Pi expose provider/model IDs. Only unwrap recognized providers;
+        // arbitrary gateway names must not inherit a different model's policy.
+        if (model is not null && model.IndexOf('/') is var slash && slash > 0 &&
+            new[] { "openai", "openai-codex", "anthropic" }.Contains(model[..slash], StringComparer.OrdinalIgnoreCase))
+            model = model[(slash + 1)..];
         if (!target.IsKnown || !Cached.Value.TryGetValue(model!, out var guide))
             return Generic(target);
 

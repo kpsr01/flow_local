@@ -4,9 +4,10 @@
 #define AppName "FlowLocal"
 #define AppPublisher "FlowLocal"
 #define AppExeName "FlowLocal.App.exe"
+#define AppId "{{C9329BA4-50BA-41F2-A88F-7A88223BEE9E}"
 
 [Setup]
-AppId={{C9329BA4-50BA-41F2-A88F-7A88223BEE9E}
+AppId={#AppId}
 AppName={#AppName}
 AppVersion={#AppVersion}
 AppVerName={#AppName} {#AppVersion}

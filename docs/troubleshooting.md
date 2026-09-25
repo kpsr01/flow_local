@@ -6,6 +6,8 @@ FlowLocal initializes local history and the resident Multitalker/Sortformer/ECAP
 
 If the model starts but dictation is refused, open **System status → Your voice** and enroll with at least eight seconds of audible solo speech. The voice embedding is stored at `%LOCALAPPDATA%\FlowLocal\user-embedding.json`. Re-enroll if your microphone or speaking conditions change. Short/noisy/overlapping speech can yield no confident match and therefore no insertion; it is not recovered by transcript cleanup. The WAV remains available in History for recognition retry.
 
+Version 1.2.11 incorrectly required a cosine score of 0.86 and discarded unfinished verification windows on release. The corrected worker uses SpeechBrain's 0.25 threshold and evaluates trailing clean speech. If speech is recognized but not verified, it reports a voice mismatch or insufficient clean speech instead of “No speech detected.” Re-enrollment is not required for this fix.
+
 For local timing diagnostics inspect `%LOCALAPPDATA%\FlowLocal\pipeline-metrics.log`. Logs exclude transcript and audio contents.
 
 ## Microphone problems

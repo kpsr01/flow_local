@@ -10,6 +10,8 @@ const FFT: usize = 400;
 const HOP: usize = 160;
 const BINS: usize = 80;
 const DIM: usize = 192;
+// SpeechBrain SpeakerRecognition.verify_batch uses cosine > 0.25.
+const MATCH_THRESHOLD: f32 = 0.25;
 
 pub struct Verifier {
     model: Session,
@@ -79,23 +81,41 @@ impl Verifier {
             }
         }
         self.samples_seen += audio.len();
+        self.score_pending(RATE * 3)
+    }
+
+    pub fn finish(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        self.score_pending(RATE * 4 / 5)
+    }
+
+    pub fn rejection(&self) -> &'static str {
+        if self.scores.iter().all(Option::is_none) {
+            "Insufficient clean speech to verify your voice."
+        } else {
+            "Speech was detected, but your enrolled voice could not be verified."
+        }
+    }
+
+    fn score_pending(&mut self, minimum: usize) -> Result<(), Box<dyn std::error::Error>> {
+        if self.user.is_some() || self.reference.is_none() { return Ok(()); }
         let mut scored = [false; 4];
         let mut tail_since = [None; 4];
         for spk in 0..4 {
-            if self.clean[spk].len() < RATE * 3 { continue; }
+            if self.clean[spk].len() < minimum { continue; }
             self.score_since[spk] = self.clean_since[spk];
             let segment = std::mem::take(&mut self.clean[spk]);
             let embedding = self.embed(&segment)?;
-            let tail_embedding = if self.rejected[spk] { Some(self.embed(&segment[segment.len() - RATE * 2..])?) } else { None };
+            let tail_len = segment.len().min(RATE * 2);
+            let tail_embedding = if self.rejected[spk] { Some(self.embed(&segment[segment.len() - tail_len..])?) } else { None };
             let reference = self.reference.as_ref().unwrap();
             self.scores[spk] = Some(embedding.iter().zip(reference).map(|(a,b)| a*b).sum());
             if let Some(tail) = tail_embedding {
                 let cosine: f32 = tail.iter().zip(reference).map(|(a,b)| a*b).sum();
                 if std::env::var_os("FLOWLOCAL_DEBUG_IDENTITY").is_some() { eprintln!("speaker {spk}: tail cosine {cosine:.4}"); }
-                if cosine >= 0.86 { tail_since[spk] = Some(self.last_clean_end[spk].saturating_sub(RATE * 2)); }
+                if cosine > MATCH_THRESHOLD { tail_since[spk] = Some(self.last_clean_end[spk].saturating_sub(tail_len)); }
             }
             scored[spk] = true;
-            if self.scores[spk].unwrap() < 0.86 {
+            if self.scores[spk].unwrap() <= MATCH_THRESHOLD {
                 self.rejected[spk] = true;
             }
             if std::env::var_os("FLOWLOCAL_DEBUG_IDENTITY").is_some() {
@@ -105,7 +125,7 @@ impl Verifier {
         let mut ranked: Vec<_> = self.scores.iter().enumerate().filter_map(|(id, score)| score.map(|s| (id,s))).collect();
         ranked.sort_by(|a,b| b.1.total_cmp(&a.1));
         if let Some(&(id, score)) = ranked.first() {
-            if scored[id] && score >= 0.86 && ranked.get(1).is_none_or(|(_, other)| score - other >= 0.12) {
+            if scored[id] && score > MATCH_THRESHOLD && ranked.get(1).is_none_or(|(_, other)| score - other >= 0.12) {
                 if !self.rejected[id] || tail_since[id].is_some() {
                     self.user = Some(id);
                     self.user_from = tail_since[id].unwrap_or(self.score_since[id]) as f32 / RATE as f32;

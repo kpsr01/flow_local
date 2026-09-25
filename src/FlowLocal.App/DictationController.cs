@@ -408,7 +408,8 @@ public sealed class DictationController : IDisposable
         }
         var code = ErrorFor(_stateMachine.State, exception);
         var emptySpeech = code == DictationErrorCode.AsrFailed
-            && string.IsNullOrWhiteSpace(_entry?.RawTranscript);
+            && (exception.Message.Contains("No speech", StringComparison.OrdinalIgnoreCase)
+                || exception.Message.Contains("empty transcript", StringComparison.OrdinalIgnoreCase));
         if (_stateMachine.State != RecordingState.Failed) _stateMachine.TransitionTo(RecordingState.Failed);
         await _overlay.Dispatcher.InvokeAsync(() =>
         {

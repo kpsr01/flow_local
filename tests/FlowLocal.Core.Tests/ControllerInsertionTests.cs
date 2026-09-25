@@ -58,6 +58,29 @@ public sealed class ControllerInsertionTests
         }
     });
 
+    [Theory]
+    [InlineData("Speech was detected, but your enrolled voice could not be verified.")]
+    [InlineData("Insufficient clean speech to verify your voice.")]
+    [InlineData("Native worker exited unexpectedly.")]
+    public Task RecognitionFailure_IsNotMisreportedAsSilence(string failure) => RunStaAsync(async () =>
+    {
+        var insertion = new FakeInsertion(new(true, TextInsertionMethod.Direct));
+        var overlay = new OverlayWindow();
+        using var controller = new DictationController(
+            new RecordingStateMachine(), new FakeTargets(SafeTarget(), true),
+            new FakeContextDetector(), new FakeStyleClassifier(), new FakeStyleStore(),
+            new FakeAudio(), new FakeAsr(failure), insertion, overlay,
+            NullLogger<DictationController>.Instance);
+        try
+        {
+            await controller.HoldAsync();
+            await controller.ReleaseAsync();
+            Assert.Equal(failure, overlay.StatusText.Text);
+            Assert.Equal(0, insertion.Calls);
+        }
+        finally { overlay.Close(); }
+    });
+
     private static ActiveTarget SafeTarget() => new(
         Environment.ProcessId,
         123,
@@ -195,12 +218,14 @@ public sealed class ControllerInsertionTests
         public Task ResetAsync(CancellationToken cancellationToken) => Task.CompletedTask;
     }
 
-    private sealed class FakeAsr : IAsrService
+    private sealed class FakeAsr(string? failure = null) : IAsrService
     {
         public Task InitializeAsync(CancellationToken cancellationToken) => Task.CompletedTask;
         public Task StartSessionAsync(AsrSessionOptions options, CancellationToken cancellationToken) => Task.CompletedTask;
         public Task PushAudioAsync(ReadOnlyMemory<byte> pcmAudio, CancellationToken cancellationToken) => Task.CompletedTask;
-        public Task<AsrResult> CompleteSessionAsync(CancellationToken cancellationToken) => Task.FromResult(new AsrResult("raw transcript"));
+        public Task<AsrResult> CompleteSessionAsync(CancellationToken cancellationToken) => failure is null
+            ? Task.FromResult(new AsrResult("raw transcript"))
+            : Task.FromException<AsrResult>(new InvalidOperationException(failure));
         public Task CancelSessionAsync(CancellationToken cancellationToken) => Task.CompletedTask;
     }
 

@@ -12,7 +12,7 @@ This list describes the current implementation rather than the broader project s
 
 - ASR is English-only, running Sortformer v2.1 and INT8 Multitalker Parakeet via parakeet-rs on CPU. There is no GPU selection or calibration UI. Model files download on first startup; a network is needed once.
 - A resident native worker isolates ONNX crashes from the WPF process. A failed session keeps its saved WAV for retry; worker startup and completion can be slower on small CPUs.
-- Enroll with at least eight seconds of audible solo speech. Verification needs roughly three seconds of clean sole-speaker frames before identifying a channel; short utterances may yield no transcript. After an initial mismatch, the channel needs two seconds of matching trailing speech before its words are admitted.
+- Enroll with at least eight seconds of audible solo speech. Streaming verification evaluates three-second clean-speech windows; on release it also evaluates remaining sole-speaker audio of at least 0.8 seconds. It uses SpeechBrain's cosine threshold of 0.25, not the overly strict 0.86 threshold shipped in 1.2.11. Shorter/ambiguous speech is rejected explicitly. Existing enrollment embeddings remain compatible.
 - Similar voices, noisy recordings, abrupt speaker changes on a reused diarization channel, or inaccurate Sortformer activity can cause false acceptances, omissions, or wrong-speaker words. This is not security-grade speaker authentication. Do not dictate secrets within earshot of an untrusted speaker.
 - Partial transcription remains internal; only the final verified raw transcript is inserted. There is no LLM cleanup, style rewrite, grammar correction, or hallucination repair.
 

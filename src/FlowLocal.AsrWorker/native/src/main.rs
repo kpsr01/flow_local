@@ -78,18 +78,27 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                     if !active || enrollment { return Err("No active dictation".into()); }
                     let began = Instant::now();
                     if !buffer.is_empty() {
+                        let real_samples = buffer.len();
                         let chunk = model.chunk_audio_samples();
                         buffer.resize(chunk,0.0);
                         let audio = std::mem::take(&mut buffer);
                         let mut identity_error = None;
                         model.transcribe_chunk_with_activity(&audio, |audio, activity| {
-                            if let Err(error) = verifier.observe(audio, activity) { identity_error = Some(error.to_string()); }
+                            if let Err(error) = verifier.observe(&audio[..real_samples], activity) { identity_error = Some(error.to_string()); }
                         })?;
                         if let Some(error) = identity_error { return Err(error.into()); }
                     }
+                    verifier.finish()?;
                     let flush = vec![0.0f32; model.chunk_audio_samples()];
                     for _ in 0..3 { model.transcribe_chunk_with_activity(&flush, |_,_| {})?; }
                     let final_text = verifier.user().map(|id| model.transcript_since(id, verifier.user_from())).unwrap_or_default();
+                    if verifier.user().is_none() {
+                        if model.get_transcripts().iter().all(|speaker| speaker.text.trim().is_empty()) {
+                            return Err("No speech was recognized.".into());
+                        }
+                        return Err(verifier.rejection().into());
+                    }
+                    if final_text.trim().is_empty() { return Err("No speech was recognized.".into()); }
                     active = false;
                     emit(json!({"evt":"final","text":final_text,"metrics":{"finalizeMs":began.elapsed().as_secs_f64()*1000.0,"processingMs":processing,"audioMs":samples as f64/16.0,"partialCount":partial_count,"firstPartialAudioMs":first_partial}}));
                 }

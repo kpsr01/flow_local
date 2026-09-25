@@ -79,7 +79,9 @@ Filename: "{app}\app\{#AppExeName}"; Flags: nowait skipifnotsilent
 
 function GetInstalledVersion(var Version: String): Boolean;
 begin
-  Result := RegQueryStringValue(HKCU, UninstallKey, 'DisplayVersion', Version);
+  Result := RegQueryStringValue(HKCU,
+    ExpandConstant('Software\Microsoft\Windows\CurrentVersion\Uninstall\{#AppId}_is1'),
+    'DisplayVersion', Version);
 end;
 
 function InitializeSetup(): Boolean;
@@ -107,8 +109,8 @@ begin
   if GetInstalledVersion(InstalledVersion) then
     WizardForm.WelcomeLabel2.Caption :=
       'FlowLocal ' + InstalledVersion + ' is already installed.'#13#10#13#10 +
-      'Setup will remove its old program files and install FlowLocal {#AppVersion}. ' +
-      'Your history, settings, recordings, and downloaded models will be kept.';
+      'Setup will replace its program files and install FlowLocal {#AppVersion}. ' +
+      'Your history, settings, and recordings will be kept. New speech models download on first launch.';
 end;
 
 procedure RegisterExtraCloseApplicationsResources();

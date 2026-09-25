@@ -96,8 +96,6 @@ public sealed class HandsFreeControllerTests
                 new MutableStore(),
                 new FakeAudio(),
                 new FakeAsr(),
-                new PassThroughCleaner(),
-                new FakeBackend(),
                 Insertion,
                 overlay,
                 NullLogger<DictationController>.Instance);
@@ -146,12 +144,6 @@ public sealed class HandsFreeControllerTests
         public Task ResetAsync(CancellationToken cancellationToken) { Settings = new OutputStyleSettings(); return Task.CompletedTask; }
     }
 
-    private sealed class PassThroughCleaner : ITranscriptCleaner
-    {
-        public Task<CleanTranscriptResult> CleanAsync(RawTranscript transcript, TranscriptStyle style, CancellationToken cancellationToken) =>
-            Task.FromResult(new CleanTranscriptResult(transcript.Text));
-    }
-
     private sealed class FakeAudio : IAudioCaptureService
     {
         public Task StartAsync(Func<ReadOnlyMemory<byte>, CancellationToken, ValueTask> onAudio, CancellationToken cancellationToken) => Task.CompletedTask;
@@ -165,13 +157,6 @@ public sealed class HandsFreeControllerTests
         public Task PushAudioAsync(ReadOnlyMemory<byte> pcmAudio, CancellationToken cancellationToken) => Task.CompletedTask;
         public Task<AsrResult> CompleteSessionAsync(CancellationToken cancellationToken) => Task.FromResult(new AsrResult("raw transcript"));
         public Task CancelSessionAsync(CancellationToken cancellationToken) => Task.CompletedTask;
-    }
-
-    private sealed class FakeBackend : ICleanupBackend
-    {
-        public string BackendId => "fake";
-        public string DisplayName => "Fake";
-        public Task<BackendAvailability> CheckAvailabilityAsync(CancellationToken cancellationToken) => Task.FromResult(new BackendAvailability(true));
     }
 
     private sealed class TrackingInsertion : ITextInsertionService

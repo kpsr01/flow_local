@@ -9,18 +9,6 @@ public interface IAsrService
     Task CancelSessionAsync(CancellationToken cancellationToken);
 }
 
-public interface ITranscriptCleaner
-{
-    Task<CleanTranscriptResult> CleanAsync(RawTranscript transcript, TranscriptStyle style, CancellationToken cancellationToken);
-}
-
-public interface ICleanupBackend
-{
-    string BackendId { get; }
-    string DisplayName { get; }
-    Task<BackendAvailability> CheckAvailabilityAsync(CancellationToken cancellationToken);
-}
-
 public interface IAudioCaptureService
 {
     Task StartAsync(Func<ReadOnlyMemory<byte>, CancellationToken, ValueTask> onAudio, CancellationToken cancellationToken);

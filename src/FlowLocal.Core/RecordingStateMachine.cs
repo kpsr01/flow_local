@@ -118,6 +118,7 @@ public sealed class RecordingStateMachine
             (RecordingState.ListeningPushToTalk, RecordingState.ListeningHandsFree) => true,
             (RecordingState.ListeningPushToTalk or RecordingState.ListeningHandsFree, RecordingState.Stopping) => true,
             (RecordingState.Stopping, RecordingState.Transcribing) => true,
+            (RecordingState.Transcribing, RecordingState.Inserting) => true,
             (RecordingState.Transcribing, RecordingState.Cleaning) => true,
             (RecordingState.Cleaning, RecordingState.Inserting) => true,
             (RecordingState.Inserting, RecordingState.Completed) => true,

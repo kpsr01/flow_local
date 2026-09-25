@@ -8,7 +8,6 @@ namespace FlowLocal.App;
 public sealed class HistoryActionService(
     IHistoryRepository history,
     IAsrService asr,
-    ITranscriptCleaner cleaner,
     IActiveTargetTracker targets,
     ITextInsertionService insertion)
 {
@@ -17,7 +16,6 @@ public sealed class HistoryActionService(
         switch (action)
         {
             case HistoryAction.RetryAsr: await RetryAsrAsync(entry, cancellationToken); break;
-            case HistoryAction.RetryCleanup: await RetryCleanupAsync(entry, cancellationToken); break;
             case HistoryAction.RetryInsertion: await RetryInsertionAsync(entry, cancellationToken); break;
             case HistoryAction.CopyRaw: Copy(entry.RawTranscript); break;
             case HistoryAction.CopyCleaned: Copy(entry.CleanedTranscript); break;
@@ -51,38 +49,10 @@ public sealed class HistoryActionService(
         }, cancellationToken);
     }
 
-    public async Task RetryCleanupAsync(HistoryEntry entry, CancellationToken cancellationToken = default)
-    {
-        var raw = new RawTranscript(Require(entry.RawTranscript, "This session has no raw transcript."));
-        var started = Stopwatch.GetTimestamp();
-        var style = entry.Style ?? TranscriptStyleResolver.Resolve(entry.OutputCategory ?? OutputContextCategory.General);
-        var target = entry.CodingTarget ?? (entry.OutputCategory is OutputContextCategory.CodeEditor or OutputContextCategory.Terminal
-            ? new CodingTarget(entry.TargetApplication ?? "unknown", null, null, "history", "No saved model signal")
-            : null);
-        var cleaned = target is not null && cleaner is SottoTranscriptCleaner sotto
-            ? await sotto.CleanCodingAsync(raw, style, target, PromptPolicyRegistry.Default.Get(target), cancellationToken)
-            : await cleaner.CleanAsync(raw, style, cancellationToken);
-        if (!CleanupResultValidator.TryValidate(raw, cleaned, out var reason))
-            throw new InvalidOperationException(reason);
-        if (target is not null && !CodingCleanupValidator.PreservesSubstantiveWords(raw, cleaned))
-            throw new InvalidOperationException("Cleanup changed the dictated request. The saved transcript was not replaced.");
-        await history.UpdateAsync(entry with
-        {
-            CodingTarget = target,
-            CleanedTranscript = cleaned.Text,
-            CleanupDuration = Stopwatch.GetElapsedTime(started),
-            InsertionDuration = null,
-            TotalDuration = null,
-            InsertionMethod = null,
-            RetryCount = entry.RetryCount + 1,
-            State = RecordingState.Failed,
-            ErrorCode = DictationErrorCode.Interrupted
-        }, cancellationToken);
-    }
 
     public async Task RetryInsertionAsync(HistoryEntry entry, CancellationToken cancellationToken = default)
     {
-        var text = entry.CleanedTranscript ?? Require(entry.RawTranscript, "This session has no transcript.");
+        var text = Require(entry.RawTranscript, "This session has no transcript.");
         var target = await targets.CaptureAsync(cancellationToken);
         if (!await targets.RestoreAndValidateAsync(target, cancellationToken))
         {

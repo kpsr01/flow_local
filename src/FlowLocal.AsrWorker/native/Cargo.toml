@@ -1,0 +1,12 @@
+[package]
+name = "flowlocal-asr-native"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+parakeet-rs = { path = "vendor/parakeet-rs", features = ["multitalker"] }
+ndarray = "0.17"
+ort = { version = "=2.0.0-rc.13", default-features = false, features = ["std", "ndarray", "download-binaries", "copy-dylibs", "api-28"] }
+serde_json = "1"
+base64 = "0.22"
+realfft = "3"

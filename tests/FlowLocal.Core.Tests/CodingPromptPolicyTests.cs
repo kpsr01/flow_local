@@ -103,63 +103,6 @@ public sealed class CodingPromptPolicyTests
     }
 
 
-    [Fact]
-    public void CodingCleanupValidatorRejectsInventedSubstantiveWords()
-    {
-        var raw = new RawTranscript("figure out why this request fires twice in the profile component");
-
-        Assert.True(CodingCleanupValidator.PreservesSubstantiveWords(raw,
-            new CleanTranscriptResult("figure out why this request fires twice in the profile component.")));
-        Assert.False(CodingCleanupValidator.PreservesSubstantiveWords(raw,
-            new CleanTranscriptResult("Investigate the profile component and verify the endpoint behavior.")));
-    }
-
-    [Fact]
-    public void CodingCleanupValidatorAllowsOnlyFillerRemovalAndTerminalPunctuation()
-    {
-        var raw = new RawTranscript("uh fix the login issue in src/auth/session.ts");
-
-        Assert.True(CodingCleanupValidator.PreservesSubstantiveWords(raw,
-            new CleanTranscriptResult("fix the login issue in src/auth/session.ts.")));
-        Assert.True(CodingCleanupValidator.PreservesSubstantiveWords(raw, new CleanTranscriptResult(raw.Text)));
-    }
-
-    [Fact]
-    public void CodingCleanupValidatorRejectsDeletedConstraintsAndChangedTechnicalTokens()
-    {
-        Assert.False(CodingCleanupValidator.PreservesSubstantiveWords(
-            new RawTranscript("do not delete src/auth.ts"),
-            new CleanTranscriptResult("delete src/auth.ts")));
-        Assert.False(CodingCleanupValidator.PreservesSubstantiveWords(
-            new RawTranscript("use --no-cache"),
-            new CleanTranscriptResult("use --nocache")));
-        Assert.False(CodingCleanupValidator.PreservesSubstantiveWords(
-            new RawTranscript("use --no-cache now"),
-            new CleanTranscriptResult("use --no-cache. now")));
-        Assert.False(CodingCleanupValidator.PreservesSubstantiveWords(
-            new RawTranscript("git status"),
-            new CleanTranscriptResult("Git. status")));
-        Assert.False(CodingCleanupValidator.PreservesSubstantiveWords(
-            new RawTranscript("git status"),
-            new CleanTranscriptResult("Git status")));
-        Assert.False(CodingCleanupValidator.PreservesSubstantiveWords(
-            new RawTranscript("run echo um"),
-            new CleanTranscriptResult("run echo")));
-    }
-
-
-
-    [Fact]
-    public void UnknownModelsUseGenericPolicyButMissingEffortRetainsKnownModelGuidance()
-    {
-        var registry = PromptPolicyRegistry.Default;
-        var unknownModel = registry.Get(new CodingTarget("Windows Terminal / Claude Code", "future-model", "medium", "test"));
-        var unknownReasoning = registry.Get(new CodingTarget("Windows Terminal / Claude Code", "claude-opus-4-7", "extended", "test"));
-
-        Assert.Equal("built-in generic coding cleanup", unknownModel.SourceReference);
-        Assert.Equal("Claude Opus", unknownReasoning.ModelFamily);
-    }
-
     [Theory]
     [InlineData("codex", "vendor/Future_Model:latest", "Codex")]
     [InlineData("claude-code", "anthropic.claude-next@20990101", "Claude Code")]
@@ -174,7 +117,6 @@ public sealed class CodingPromptPolicyTests
         Assert.Equal(model, target.Model);
         Assert.Equal(harness, target.Harness);
         Assert.Null(target.Reasoning);
-        Assert.Equal("unknown", PromptPolicyRegistry.Default.Get(target).ModelFamily);
     }
 
     [Fact]
@@ -186,7 +128,6 @@ public sealed class CodingPromptPolicyTests
         var second = CodingContextDetector.Detect("pwsh.exe", true, $"codex | {session} | future-model | default", now)!;
         Assert.Equal("Codex", first.Harness);
         Assert.Equal("gpt-5.3-codex", first.Model);
-        Assert.Equal("OpenAI Codex", PromptPolicyRegistry.Default.Get(first).ModelFamily);
         Assert.Equal("future-model", second.Model);
         Assert.Null(second.Reasoning);
         Assert.False(CodingContextDetector.Detect("pwsh.exe", true, "my gpt-5.3-codex project", now)!.IsKnown);
@@ -201,56 +142,6 @@ public sealed class CodingPromptPolicyTests
         var now = DateTimeOffset.UtcNow;
         Assert.False(CodingContextDetector.Detect("pwsh.exe", true,
             $"FlowLocal/1|codex|{model}|high|{now.ToUnixTimeSeconds() + offset}", now)!.IsKnown);
-    }
-
-    [Fact]
-    public void FormattingCanStructureExistingPlansButCannotAddSteps()
-    {
-        var raw = new RawTranscript("uh inspect the failure then fix the parser keep --no-cache unchanged");
-        Assert.True(CodingCleanupValidator.PreservesSubstantiveWords(raw,
-            new CleanTranscriptResult("1. inspect the failure.\n2. then fix the parser.\n3. keep --no-cache unchanged.")));
-        Assert.False(CodingCleanupValidator.PreservesSubstantiveWords(raw,
-            new CleanTranscriptResult("1. inspect the failure.\n2. then fix the parser.\n3. keep --no-cache unchanged.\n4. run tests.")));
-    }
-
-    [Fact]
-    public void FormattingAllowsModelGuideHeadingsWithoutChangingTheRequest()
-    {
-        var raw = new RawTranscript(
-            "fix the parser in src/parser.ts keep --no-cache unchanged do not change the public API return a short summary");
-        var formatted = new CleanTranscriptResult(
-            "Task:\nfix the parser in src/parser.ts\n\nConstraints:\nkeep --no-cache unchanged.\ndo not change the public API.\n\nOutput:\nreturn a short summary.");
-
-        Assert.True(CodingCleanupValidator.PreservesSubstantiveWords(raw, formatted));
-        var grammar = CodingCleanupValidator.CreateFormattingGrammar(raw);
-        Assert.Contains("\"Task:\\n\"", grammar);
-        Assert.Contains("\"Constraints:\\n\"", grammar);
-        Assert.DoesNotContain("\"Task:\\n\"",
-            CodingCleanupValidator.CreateFormattingGrammar(new RawTranscript("fix src/auth.ts")));
-        Assert.Contains("\"Output:\\n\"", grammar);
-    }
-
-    [Fact]
-    public void CodingPromptUsesSelectedModelGuideAlongsideFormattingExamples()
-    {
-        var target = new CodingTarget("Windows Terminal / Codex", "gpt-5.3-codex", "medium", "test");
-        var prompt = DictationPromptAdapter.Build(new RawTranscript("fix src/auth.ts"),
-            PromptPolicyRegistry.Default.Get(target));
-
-        Assert.Contains("Prefer a direct task followed by requirement bullets", prompt);
-        Assert.Contains("fix src/auth.ts", prompt);
-        Assert.Contains("Example output:", prompt);
-        Assert.DoesNotContain("uh inspect src/auth.ts", prompt);
-    }
-
-    [Fact]
-    public void ClaudeExtendedContextKeepsFullIdentityAndUsesItsBaseModelGuide()
-    {
-        var now = DateTimeOffset.UtcNow;
-        var target = CodingContextDetector.Detect("pwsh.exe", true,
-            $"FlowLocal/1|claude-code|claude-opus-5[1m]|low|{now.ToUnixTimeSeconds()}", now)!;
-        Assert.Equal("claude-opus-5[1m]", target.Model);
-        Assert.Equal("Claude Opus 5", PromptPolicyRegistry.Default.Get(target).ModelFamily);
     }
 
     [Fact]

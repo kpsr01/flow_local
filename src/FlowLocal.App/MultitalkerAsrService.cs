@@ -13,16 +13,12 @@ public sealed record AsrStreamingMetrics(
     double? FirstPartialAudioMilliseconds);
 internal sealed record AsrCompletion(string? Text, AsrStreamingMetrics? Metrics);
 
-/// <summary>
-/// Thin client for the resident Nemotron cache-aware streaming worker.
-/// The worker owns the native model/session so the WPF process remains isolated
-/// from native failures and the model stays loaded between dictations.
-/// </summary>
-public sealed class CanaryAsrService : IAsrService, IDisposable, IAsyncDisposable
+/// <summary>Resident local speaker-conditioned streaming recognition worker.</summary>
+public sealed class MultitalkerAsrService : IAsrService, IDisposable, IAsyncDisposable
 {
-    public const string ModelName = "nemotron-speech-streaming-en-0.6b-q4_k_m";
+    public const string ModelName = "multitalker-parakeet-streaming-0.6b-v1-int8";
 
-    private static readonly TimeSpan InitTimeout = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan InitTimeout = TimeSpan.FromMinutes(30);
     private static readonly TimeSpan StartAckTimeout = TimeSpan.FromSeconds(45);
     private static readonly TimeSpan CompleteTimeout = TimeSpan.FromSeconds(120);
     private static readonly TimeSpan CancelTimeout = TimeSpan.FromSeconds(10);
@@ -34,7 +30,9 @@ public sealed class CanaryAsrService : IAsrService, IDisposable, IAsyncDisposabl
     private TaskCompletionSource<bool>? _ackSource;
     private TaskCompletionSource<AsrCompletion?>? _finalSource;
     private volatile string? _pendingStreamError;
+    public bool IsEnrolled { get; private set; }
     private bool _initialized;
+    public bool IsSessionActive { get; private set; }
     private bool _disposed;
 
     public AsrBackendStatus Status { get; private set; } = new(AsrBackendState.NotInstalled);
@@ -59,21 +57,48 @@ public sealed class CanaryAsrService : IAsrService, IDisposable, IAsyncDisposabl
         ArgumentNullException.ThrowIfNull(options);
         if (options.SampleRate != 16_000 || options.BitsPerSample != 16 || options.Channels != 1)
         {
-            throw new ArgumentException("Nemotron ASR requires 16000 Hz, 16-bit, mono PCM audio.", nameof(options));
+            throw new ArgumentException("Multitalker requires 16000 Hz, 16-bit, mono PCM audio.", nameof(options));
         }
 
         ObjectDisposedException.ThrowIf(_disposed, this);
         await _lifecycle.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            if (IsSessionActive) throw new InvalidOperationException("A recording is already in progress.");
             ResetSessionState();
             await EnsureWorkerAsync(cancellationToken).ConfigureAwait(false);
             await RequestAckAsync(new { cmd = "start" }, StartAckTimeout, cancellationToken).ConfigureAwait(false);
+            IsSessionActive = true;
         }
         finally
         {
             _lifecycle.Release();
         }
+    }
+
+    public async Task BeginEnrollmentAsync(CancellationToken cancellationToken)
+    {
+        await _lifecycle.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (IsSessionActive) throw new InvalidOperationException("A recording is already in progress.");
+            ResetSessionState();
+            await EnsureWorkerAsync(cancellationToken).ConfigureAwait(false);
+            await RequestAckAsync(new { cmd = "enroll" }, StartAckTimeout, cancellationToken).ConfigureAwait(false);
+            IsSessionActive = true;
+        }
+        finally { _lifecycle.Release(); }
+    }
+
+    public async Task FinishEnrollmentAsync(CancellationToken cancellationToken)
+    {
+        await _lifecycle.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await RequestAckAsync(new { cmd = "finish_enroll" }, CompleteTimeout, cancellationToken).ConfigureAwait(false);
+            IsSessionActive = false;
+        }
+        finally { _lifecycle.Release(); }
     }
 
     public async Task PushAudioAsync(ReadOnlyMemory<byte> pcmAudio, CancellationToken cancellationToken)
@@ -124,6 +149,7 @@ public sealed class CanaryAsrService : IAsrService, IDisposable, IAsyncDisposabl
             }
 
             if (completion is null) throw new InvalidOperationException("No speech was recognized.");
+            IsSessionActive = false;
             LastMetrics = completion.Metrics;
             return new AsrResult(completion.Text ?? throw new InvalidOperationException("No speech was recognized."));
         }
@@ -140,6 +166,7 @@ public sealed class CanaryAsrService : IAsrService, IDisposable, IAsyncDisposabl
         await _lifecycle.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            IsSessionActive = false;
             ResetSessionState();
             if (IsWorkerAlive)
             {
@@ -182,8 +209,7 @@ public sealed class CanaryAsrService : IAsrService, IDisposable, IAsyncDisposabl
             return;
         }
 
-        // First-run model download/GGUF warm-up inside the worker can occasionally
-        // stall; a fresh process retries instead of hanging forever.
+        // Keep the model resident between sessions; recreate only after a crash.
         for (var attempt = 1; ; attempt++)
         {
             if (!IsWorkerAlive)
@@ -282,6 +308,7 @@ public sealed class CanaryAsrService : IAsrService, IDisposable, IAsyncDisposabl
                     break;
 
                 case "ok":
+                    if (root.TryGetProperty("enrolled", out var enrolled)) IsEnrolled = enrolled.GetBoolean();
                     Interlocked.Exchange(ref _ackSource, null)?.TrySetResult(true);
                     break;
 
@@ -294,15 +321,9 @@ public sealed class CanaryAsrService : IAsrService, IDisposable, IAsyncDisposabl
 
                 case "error":
                     var message = root.TryGetProperty("message", out var messageEl) ? messageEl.GetString() : "Unknown ASR error.";
-                    if (Interlocked.Exchange(ref _finalSource, null) is { } pendingFinal)
-                    {
-                        pendingFinal.TrySetResult(null);
-                        _pendingStreamError = message;
-                    }
-                    else
-                    {
-                        _pendingStreamError = message;
-                    }
+                    _pendingStreamError = message;
+                    Interlocked.Exchange(ref _ackSource, null)?.TrySetException(new InvalidOperationException(message));
+                    Interlocked.Exchange(ref _finalSource, null)?.TrySetException(new InvalidOperationException(message));
                     break;
             }
         }

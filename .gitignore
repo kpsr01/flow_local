@@ -2,6 +2,7 @@
 bin/
 obj/
 artifacts/
+src/FlowLocal.AsrWorker/native/target/
 
 # IDE
 .vs/

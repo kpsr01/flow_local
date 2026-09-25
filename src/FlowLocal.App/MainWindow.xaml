@@ -272,6 +272,14 @@
                                 <TextBlock Style="{StaticResource SectionTitle}" Text="Models and diagnostics" />
                                 <TextBlock Style="{StaticResource SectionSub}" Margin="0,3,0,16"
                                            Text="Live view of local model readiness and runtime facts. No transcripts leave this machine." />
+                                <TextBlock Style="{StaticResource SectionTitle}" Text="Your voice" />
+                                <TextBlock Style="{StaticResource SectionSub}" Margin="0,3,0,12" TextWrapping="Wrap"
+                                           Text="Record about 10 seconds of clean speech in a quiet room. Your voiceprint stays on this device. Dictation only inserts text after a confident match." />
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                    <Button x:Name="EnrollButton" MinWidth="170" MinHeight="40" Content="Enroll my voice" Click="EnrollVoice_Click"/>
+                                    <TextBlock x:Name="EnrollmentStatusText" Margin="16,0,0,0" VerticalAlignment="Center" Style="{StaticResource LabelText}" Text="Not enrolled" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
+                                </StackPanel>
+                                <Separator Style="{StaticResource SeparatorLine}" Margin="0,8,0,18"/>
                                 <Grid Margin="0,4,0,14">
                                     <Grid.ColumnDefinitions><ColumnDefinition Width="190"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                                     <Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
@@ -279,8 +287,8 @@
                                     <TextBlock Grid.Row="1" Text="Runtime" Style="{StaticResource LabelText}"/><TextBlock Grid.Row="1" Grid.Column="1" x:Name="RuntimeText" Style="{StaticResource ValueText}" Text="&#x2014;"/>
                                     <TextBlock Grid.Row="2" Text="ASR model" Style="{StaticResource LabelText}"/><TextBlock Grid.Row="2" Grid.Column="1" x:Name="AsrModelText" Style="{StaticResource ValueText}" Text="&#x2014;"/>
                                     <TextBlock Grid.Row="3" Text="ASR state" Style="{StaticResource LabelText}"/><TextBlock Grid.Row="3" Grid.Column="1" x:Name="AsrStateText" Style="{StaticResource ValueText}" Text="&#x2014;"/>
-                                    <TextBlock Grid.Row="4" Text="Cleanup backend" Style="{StaticResource LabelText}"/><TextBlock Grid.Row="4" Grid.Column="1" x:Name="CleanupBackendText" Style="{StaticResource ValueText}" Text="&#x2014;"/>
-                                    <TextBlock Grid.Row="5" Text="Cleanup model path" Style="{StaticResource LabelText}"/><TextBlock Grid.Row="5" Grid.Column="1" x:Name="CleanupPathText" Style="{StaticResource ValueText}" Text="&#x2014;" TextTrimming="CharacterEllipsis"/>
+                                    <TextBlock Grid.Row="4" Text="Speaker matching" Style="{StaticResource LabelText}"/><TextBlock Grid.Row="4" Grid.Column="1" x:Name="VoiceStateText" Style="{StaticResource ValueText}" Text="Local"/>
+                                    <TextBlock Grid.Row="5" Text="Transcript" Style="{StaticResource LabelText}"/><TextBlock Grid.Row="5" Grid.Column="1" x:Name="TranscriptModeText" Style="{StaticResource ValueText}" Text="Raw Multitalker output"/>
                                     <TextBlock Grid.Row="6" Text="Microphone mode" Style="{StaticResource LabelText}"/><TextBlock Grid.Row="6" Grid.Column="1" x:Name="MicModeText" Style="{StaticResource ValueText}" Text="&#x2014;"/>
                                 </Grid>
                                 <Button MinWidth="110" Content="_Refresh" Click="RefreshDiagnostics_Click"/>
@@ -337,22 +345,21 @@
                         <Grid><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
                             <StackPanel Margin="0,0,0,12"><TextBlock Text="Transcript" Style="{StaticResource SectionTitle}"/><TextBlock Text="Review, copy, or recover a dictation." Style="{StaticResource SectionSub}" Margin="0,4,0,0"/></StackPanel>
                             <TabControl Grid.Row="1" Background="Transparent" BorderThickness="0" Padding="0">
-                                <TabItem Header="Cleaned text"><TextBox x:Name="HistoryCleanedTextBox" IsReadOnly="True" TextWrapping="Wrap" VerticalContentAlignment="Top" VerticalScrollBarVisibility="Auto" FontSize="15" Padding="14" AutomationProperties.Name="Cleaned transcript"/></TabItem>
-                                <TabItem Header="Original speech"><TextBox x:Name="HistoryRawTextBox" IsReadOnly="True" TextWrapping="Wrap" VerticalContentAlignment="Top" VerticalScrollBarVisibility="Auto" FontSize="15" Padding="14" AutomationProperties.Name="Original transcript"/></TabItem>
+                                <TabItem Header="Raw transcript"><TextBox x:Name="HistoryRawTextBox" IsReadOnly="True" TextWrapping="Wrap" VerticalContentAlignment="Top" VerticalScrollBarVisibility="Auto" FontSize="15" Padding="14" AutomationProperties.Name="Raw transcript"/></TabItem>
+                                <TabItem Header="Prior cleaned text"><TextBox x:Name="HistoryCleanedTextBox" IsReadOnly="True" TextWrapping="Wrap" VerticalContentAlignment="Top" VerticalScrollBarVisibility="Auto" FontSize="15" Padding="14" AutomationProperties.Name="Previously cleaned transcript"/></TabItem>
                             </TabControl>
                             <StackPanel x:Name="HistoryActionPanel" Grid.Row="2" Margin="0,16,0,0" IsEnabled="False">
                                 <WrapPanel>
-                                    <Button Style="{StaticResource AccentButton}" Content="Copy _cleaned" Click="HistoryAction_Click" Tag="CopyCleaned" Margin="0,0,8,8"/>
-                                    <Button Content="_Paste cleaned" Click="HistoryAction_Click" Tag="Paste" Margin="0,0,8,8"/>
+                                    <Button Style="{StaticResource AccentButton}" Content="Copy _transcript" Click="HistoryAction_Click" Tag="CopyRaw" Margin="0,0,8,8"/>
+                                    <Button Content="_Paste transcript" Click="HistoryAction_Click" Tag="Paste" Margin="0,0,8,8"/>
                                     <Button Content="_Play audio" Click="HistoryAction_Click" Tag="Play" Margin="0,0,8,8"/>
                                 </WrapPanel>
                                 <Expander Header="More actions" Foreground="#BEB9B0" Margin="0,4,0,0">
                                     <WrapPanel Margin="0,8,0,0">
-                                        <Button Content="Copy original" Click="HistoryAction_Click" Tag="CopyRaw" Margin="0,0,8,8"/>
+                                        <Button Content="Copy prior cleaned text" Click="HistoryAction_Click" Tag="CopyCleaned" Margin="0,0,8,8"/>
                                         <Button Content="Export audio" Click="HistoryAction_Click" Tag="Export" Margin="0,0,8,8"/>
                                         <Button Content="Open audio folder" Click="HistoryAction_Click" Tag="OpenLocation" Margin="0,0,8,8"/>
                                         <Button Content="Retry speech" Click="HistoryAction_Click" Tag="RetryAsr" Margin="0,0,8,8"/>
-                                        <Button Content="Retry cleanup" Click="HistoryAction_Click" Tag="RetryCleanup" Margin="0,0,8,8"/>
                                         <Button Content="Retry paste" Click="HistoryAction_Click" Tag="RetryInsertion" Margin="0,0,8,8"/>
                                         <Button Content="Delete entry" Click="DeleteSelectedHistory_Click" Foreground="#FFADA5" Margin="0,0,8,8"/>
                                     </WrapPanel>

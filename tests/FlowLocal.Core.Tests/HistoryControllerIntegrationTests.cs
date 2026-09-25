@@ -21,7 +21,7 @@ public sealed class HistoryControllerIntegrationTests
         var entry = Assert.Single(history.Entries);
         Assert.Equal(RecordingState.Completed, entry.State);
         Assert.Equal("raw transcript", entry.RawTranscript);
-        Assert.Equal("cleaned transcript", entry.CleanedTranscript);
+        Assert.Null(entry.CleanedTranscript);
         Assert.Equal(TextInsertionMethod.Direct, entry.InsertionMethod);
         Assert.Equal(1, insertion.Calls);
         Assert.NotNull(entry.RecordingEndedAt);
@@ -77,7 +77,7 @@ public sealed class HistoryControllerIntegrationTests
 
     private static DictationController CreateController(FakeHistory history, FakeInsertion insertion, FakeAsr asr) => new(
         new RecordingStateMachine(), new FakeTargets(), new FakeContextDetector(), new FakeStyleClassifier(),
-        new FakeStyleStore(), new FakeAudio(), asr, new FakeCleaner(), new FakeBackend(), insertion,
+        new FakeStyleStore(), new FakeAudio(), asr, insertion,
         new OverlayWindow(), NullLogger<DictationController>.Instance, history);
 
     private static Task RunStaAsync(Func<Task> action)
@@ -166,18 +166,6 @@ public sealed class HistoryControllerIntegrationTests
             return new AsrResult("raw transcript");
         }
         public Task CancelSessionAsync(CancellationToken cancellationToken) => Task.CompletedTask;
-    }
-
-    private sealed class FakeCleaner : ITranscriptCleaner
-    {
-        public Task<CleanTranscriptResult> CleanAsync(RawTranscript transcript, TranscriptStyle style, CancellationToken cancellationToken) => Task.FromResult(new CleanTranscriptResult("cleaned transcript"));
-    }
-
-    private sealed class FakeBackend : ICleanupBackend
-    {
-        public string BackendId => "fake";
-        public string DisplayName => "Fake";
-        public Task<BackendAvailability> CheckAvailabilityAsync(CancellationToken cancellationToken) => Task.FromResult(new BackendAvailability(true));
     }
 
     private sealed class FakeContextDetector : IApplicationContextDetector

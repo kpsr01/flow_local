@@ -10,16 +10,11 @@ This list describes the current implementation rather than the broader project s
 
 ## Models and language
 
-- ASR is English-only and hard-coded to Nemotron Speech Streaming EN 0.6B (Q4_K_M GGUF from `handy-computer/nemotron-speech-streaming-en-0.6b-gguf`, run through transcribe.cpp 0.2.3).
-- Nemotron inference runs inside the separate `FlowLocal.AsrWorker.exe` process. A stalled or natively-crashing runtime is contained there; the worker is killed and respawned for the next dictation, and a wedged session leaves saved audio for retry.
-- Inference is pinned to the CPU backend; there is no GPU selection or tuning. Streaming partials are internal and only the final transcript is inserted.
-- The worker keeps a streaming session resident but still finalizes at release; long sessions are bounded by model/runtime limits and the completion timeout rather than an explicit duration limit.
-- Raw ASR output has punctuation/capitalization disabled. General cleanup performs that pass; coding cleanup deliberately retains word case and spelling to avoid changing identifiers. It does not correct substantive ASR mistakes. First initialization may require the network when running from source.
-- Cleanup requires `LFM2.5-1.2B-Instruct-QAD-Q4_0.gguf`; the packaged build includes llama.cpp, while source runs can use `FLOWLOCAL_LLAMA_SERVER_PATH`. `FLOWLOCAL_CLEANUP_DSPARK=1` additionally requires the DSpark Q4_K_M sidecar and enables speculative decoding.
-- Cleanup runs on CPU with a 2048-token context and deterministic sampling. DSpark is an optional throughput path, not a quality change: it must be checked against the paired benchmark because speculative decoding can be slower on some short inputs.
-- Coding cleanup constrains decoding to the original substantive words and order; the local model selects punctuation and layout, whose quality is not guaranteed. General cleanup remains prompt-driven. Both retain validation/retry/raw fallback.
-- Greedy decoding uses the model card's `repetition_penalty=1.05`. Rare n-gram loops remain possible on pathological verbatim-repetition inputs; the card's own guidance treats this penalty setting as the production default and `CleanupResultValidator` plus the raw-transcript fallback bound the damage.
-- Cleanup retries once and then falls back to the raw transcript. A fallback session is marked `CleanupFailed`; unchanged text is not a cleanup-success claim.
+- ASR is English-only, running Sortformer v2.1 and INT8 Multitalker Parakeet via parakeet-rs on CPU. There is no GPU selection or calibration UI. Model files download on first startup; a network is needed once.
+- A resident native worker isolates ONNX crashes from the WPF process. A failed session keeps its saved WAV for retry; worker startup and completion can be slower on small CPUs.
+- Enroll with at least eight seconds of audible solo speech. Verification needs roughly three seconds of clean sole-speaker frames before identifying a channel; short utterances may yield no transcript. After an initial mismatch, the channel needs two seconds of matching trailing speech before its words are admitted.
+- Similar voices, noisy recordings, abrupt speaker changes on a reused diarization channel, or inaccurate Sortformer activity can cause false acceptances, omissions, or wrong-speaker words. This is not security-grade speaker authentication. Do not dictate secrets within earshot of an untrusted speaker.
+- Partial transcription remains internal; only the final verified raw transcript is inserted. There is no LLM cleanup, style rewrite, grammar correction, or hallucination repair.
 
 ## Microphone and shortcut
 
@@ -36,9 +31,8 @@ This list describes the current implementation rather than the broader project s
 - FlowLocal records only normalized domains, never URL paths or query strings. It therefore cannot classify by page path or inspect full page content.
 - Built-in domain/application tables are finite. Unknown targets use control hints, generic browser, or the universal/general fallback; users must add overrides for other targets.
 - Overrides can choose categories/styles but do not add arbitrary classifier code or URL rules. Full URLs are rejected.
-- Cleanup is for faithful formatting, not summarization, answering questions, executing prompts, or inventing code and plans.
 - Coding-harness detection needs a foreground terminal exposing fixed TUI chrome, a bundled Pi/Oh My Pi status extension, or accessible model controls in Claude Desktop or ChatGPT/Codex Desktop. Pinned/custom terminal layouts, integrated or remote terminals, and Electron controls that remain inaccessible after FlowLocal requests Chromium accessibility can leave metadata unknown.
-- Model IDs are not allowlisted: unavailable metadata remains unknown and unlisted IDs use general rewrite-only guidance. Timestamped Codex/Claude terminal signals expire after five minutes, and long truncated Codex IDs need matching hook metadata. Detection reports the harness-selected model, not the actual backend behind an opaque gateway.
+- Coding-harness metadata records visible model/effort where detectable, but no model-specific prompt adaptation changes the inserted text. Unknown models stay unknown.
 
 ## Insertion
 
@@ -58,7 +52,6 @@ This list describes the current implementation rather than the broader project s
 
 ## UI and diagnostics
 
-- The Settings window contains General, Shortcuts, Microphone, Application styles, History/privacy, and Models-and-diagnostics sections. Appearance settings and a comprehensive diagnostics page (structured log viewer, diagnostics export) are absent; the diagnostics section shows version/runtime/model/microphone status only.
-- Startup failure disables dictation, but the shortcut-time unavailable message names the speech model generically even when another initialization prerequisite (such as the cleanup model) caused the failure.
-- Model readiness is represented by startup overlay success/failure plus the Models-and-diagnostics settings section rather than a full readiness page with load/unload controls.
+- The Settings window contains System status with voice enrollment and local model state. There is no structured log viewer, diagnostic export, or calibration tool.
+- Startup failures disable dictation; the overlay reports model errors. Enrollment and dictation cannot record concurrently.
 - There is no built-in benchmark runner. Use the linked manual documents and record evidence before making compatibility, latency, UI-freeze, or memory-stability claims.

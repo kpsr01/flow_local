@@ -18,8 +18,7 @@ public partial class App : Application
     private GlobalShortcutService? _shortcut;
     private WasapiAudioCaptureService? _audio;
     private DictationController? _dictation;
-    private CanaryAsrService? _asr;
-    private SottoTranscriptCleaner? _cleaner;
+    private MultitalkerAsrService? _asr;
     private SqliteHistoryRepository? _history;
     private AppSettingsStore? _appSettings;
     private HistoryActionService? _historyActions;
@@ -76,8 +75,7 @@ public partial class App : Application
         _audio = new WasapiAudioCaptureService();
         _audio.LevelChanged += OnAudioLevelChanged;
         _audio.FellBackToDefaultDevice += OnMicrophoneFallback;
-        _asr = new CanaryAsrService();
-        _cleaner = new SottoTranscriptCleaner();
+        _asr = new MultitalkerAsrService();
         _history = new SqliteHistoryRepository();
         _appSettings = new AppSettingsStore();
         var targets = new ActiveTargetTracker();
@@ -89,10 +87,10 @@ public partial class App : Application
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "FlowLocal", "pipeline-metrics.log"));
         _dictation = new DictationController(
             new RecordingStateMachine(), targets, contextDetector, styleClassifier, styleOverrides,
-            _audio, _asr, _cleaner, _cleaner, insertion, _overlayWindow,
+            _audio, _asr, insertion, _overlayWindow,
             metricsLogger, _history,
-            asrModelName: CanaryAsrService.ModelName);
-        var historyActions = new HistoryActionService(_history, _asr, _cleaner, targets, insertion);
+            asrModelName: MultitalkerAsrService.ModelName);
+        var historyActions = new HistoryActionService(_history, _asr, targets, insertion);
         _historyActions = historyActions;
         ApplicationContext? diagnosticContext = null;
         OutputClassification? diagnosticClassification = null;
@@ -141,10 +139,10 @@ public partial class App : Application
             await _history.InitializeAsync(CancellationToken.None);
             await _history.ApplyRetentionAsync(DateTimeOffset.UtcNow, CancellationToken.None);
             await _settingsWindow.ConfigureHistoryAsync(_history, actions.ExecuteAsync, CancellationToken.None);
-            if (_appSettings is not null && _shortcut is not null && _audio is not null && _asr is not null && _cleaner is not null)
+            if (_appSettings is not null && _shortcut is not null && _audio is not null && _asr is not null)
             {
                 await _settingsWindow.ConfigureRuntimeAsync(
-                    _appSettings, _shortcut, _audio, _asr, _cleaner, ApplyAppSettings);
+                    _appSettings, _shortcut, _audio, _asr, ApplyAppSettings);
                 var settings = await _appSettings.LoadAsync();
                 ApplyAppSettings(settings);
             }
@@ -278,10 +276,10 @@ public partial class App : Application
         _notifyIcon?.ShowBalloonTip(5000, "FlowLocal microphone", message, Forms.ToolTipIcon.Warning);
 
     private async void OnShortcutPressed(object? sender, EventArgs e) =>
-        await RunControllerAsync(_dictationReady && _dictation is not null ? _dictation.HandleShortcutPressedAsync : ShowBackendUnavailableAsync);
+        await RunControllerAsync(_settingsWindow?.IsEnrolling == true ? null : _dictationReady && _dictation is not null ? _dictation.HandleShortcutPressedAsync : ShowBackendUnavailableAsync);
     private async void OnShortcutReleased(object? sender, EventArgs e) =>
-        await RunControllerAsync(_dictationReady && _dictation is not null ? _dictation.HandleShortcutReleasedAsync : null);
-    private async void OnShortcutCancelled(object? sender, EventArgs e) => await RunControllerAsync(_dictationReady && _dictation is not null ? _dictation.CancelAsync : null);
+        await RunControllerAsync(_settingsWindow?.IsEnrolling == true ? null : _dictationReady && _dictation is not null ? _dictation.HandleShortcutReleasedAsync : null);
+    private async void OnShortcutCancelled(object? sender, EventArgs e) => await RunControllerAsync(_settingsWindow?.IsEnrolling == true ? null : _dictationReady && _dictation is not null ? _dictation.CancelAsync : null);
 
     private async void OnOverlayRetryRequested(object? sender, EventArgs e)
     {
@@ -304,13 +302,8 @@ public partial class App : Application
             var transcribed = await _history.GetAsync(failed.Id, CancellationToken.None).ConfigureAwait(true)
                 ?? failed;
 
-            _overlayWindow.ShowCleaning();
-            await _historyActions.RetryCleanupAsync(transcribed);
-            var cleaned = await _history.GetAsync(failed.Id, CancellationToken.None).ConfigureAwait(true)
-                ?? transcribed;
-
             _overlayWindow.ShowInserting();
-            await _historyActions.RetryInsertionAsync(cleaned);
+            await _historyActions.RetryInsertionAsync(transcribed);
             _overlayWindow.ShowCompleted();
             _ = _settingsWindow?.RefreshHistoryAsync();
         }
@@ -336,7 +329,7 @@ public partial class App : Application
 
     private void OnPillStartRequested(object? sender, EventArgs e)
     {
-        if (!_dictationReady || _dictation is null) return;
+        if (!_dictationReady || _dictation is null || _settingsWindow?.IsEnrolling == true) return;
         _ = _dictation.HandleShortcutPressedAsync();
     }
 
@@ -483,7 +476,6 @@ public partial class App : Application
             _audio.FellBackToDefaultDevice -= OnMicrophoneFallback;
         }
         _audio?.Dispose();
-        _cleaner?.Dispose();
         if (_asr is not null) await _asr.DisposeAsync();
         _activationSignal?.Dispose();
         _singleInstance?.Dispose();

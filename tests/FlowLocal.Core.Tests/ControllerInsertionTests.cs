@@ -33,8 +33,6 @@ public sealed class ControllerInsertionTests
             new FakeStyleStore(),
             new FakeAudio(),
             new FakeAsr(),
-            new FakeCleaner(),
-            new FakeBackend(),
             insertion,
             overlay,
             NullLogger<DictationController>.Instance);
@@ -50,7 +48,7 @@ public sealed class ControllerInsertionTests
             if (scenario.ExpectedInsertCalls == 1)
             {
                 Assert.Same(scenario.Target, insertion.Target);
-                Assert.Equal("cleaned transcript", insertion.Text);
+                Assert.Equal("raw transcript", insertion.Text);
             }
         }
         finally
@@ -206,16 +204,4 @@ public sealed class ControllerInsertionTests
         public Task CancelSessionAsync(CancellationToken cancellationToken) => Task.CompletedTask;
     }
 
-    private sealed class FakeCleaner : ITranscriptCleaner
-    {
-        public Task<CleanTranscriptResult> CleanAsync(RawTranscript transcript, TranscriptStyle style, CancellationToken cancellationToken) =>
-            Task.FromResult(new CleanTranscriptResult("cleaned transcript"));
-    }
-
-    private sealed class FakeBackend : ICleanupBackend
-    {
-        public string BackendId => "fake";
-        public string DisplayName => "Fake";
-        public Task<BackendAvailability> CheckAvailabilityAsync(CancellationToken cancellationToken) => Task.FromResult(new BackendAvailability(true));
-    }
 }

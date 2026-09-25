@@ -6,19 +6,12 @@
     <PlatformTarget>x64</PlatformTarget>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <!-- NeMo/transcribe.cpp native release with cache-aware streaming Nemotron support. -->
-    <TranscribeNativeVersion>0.2.3</TranscribeNativeVersion>
-    <TranscribeNativeUrl>https://github.com/handy-computer/transcribe.cpp/releases/download/v$(TranscribeNativeVersion)/transcribe-native-$(TranscribeNativeVersion)-windows-x86_64-cpu-vulkan.tar.gz</TranscribeNativeUrl>
-    <TranscribeNativeDir>$(MSBuildThisFileDirectory)obj\transcribe-native\$(TranscribeNativeVersion)</TranscribeNativeDir>
   </PropertyGroup>
-  <ItemGroup>
-    <None Include="$(TranscribeNativeDir)\*.dll" Condition="Exists('$(TranscribeNativeDir)\transcribe.dll')"
-          CopyToOutputDirectory="PreserveNewest" Link="%(FileName)%(Extension)" Visible="false" />
-  </ItemGroup>
-  <Target Name="FetchTranscribeNative" BeforeTargets="AssignTargetPaths"
-          Condition="!Exists('$(TranscribeNativeDir)\transcribe.dll')">
-    <MakeDir Directories="$(TranscribeNativeDir)" />
-    <Exec Command="curl.exe -sSfL -o &quot;$(TranscribeNativeDir)\native.tar.gz&quot; $(TranscribeNativeUrl)" ConsoleToMsBuild="true" />
-    <Exec Command="tar -xzf &quot;$(TranscribeNativeDir)\native.tar.gz&quot; -C &quot;$(TranscribeNativeDir)&quot; --strip-components=1" />
+  <Target Name="BuildNativeAsr" BeforeTargets="AssignTargetPaths">
+    <Exec Command="cargo build --release --manifest-path &quot;$(MSBuildThisFileDirectory)native\Cargo.toml&quot;" />
   </Target>
+  <ItemGroup>
+    <None Include="native\target\release\flowlocal-asr-native.exe" CopyToOutputDirectory="PreserveNewest" Link="flowlocal-asr-native.exe" />
+    <None Include="native\target\release\onnxruntime.dll" CopyToOutputDirectory="PreserveNewest" Link="onnxruntime.dll" Condition="Exists('native\target\release\onnxruntime.dll')" />
+  </ItemGroup>
 </Project>

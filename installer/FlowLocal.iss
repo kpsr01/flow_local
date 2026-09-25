@@ -32,10 +32,10 @@ WizardStyle=modern
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Messages]
-WelcomeLabel2=This will install [name/ver], a private, local dictation assistant.%n%nEverything runs on this PC: speech recognition and text cleanup never touch the cloud.%n%nThe installer also downloads the speech-recognition and text-cleanup models (roughly 1.35 GB total). An internet connection is required once.
+WelcomeLabel2=This will install [name/ver], a private, local dictation assistant.%n%nSpeech recognition and voice matching run on this PC. The app downloads its speech models when first started; an internet connection is required once.
 SelectDirDesc=Where should FlowLocal be installed?
-FinishedLabelNoIcons=[name] has been installed. The dictation capsule is running in your system tray - hold Ctrl+Win anywhere and speak.
-FinishedLabel=[name] has been installed. The dictation capsule is running in your system tray - hold Ctrl+Win anywhere and speak.
+FinishedLabelNoIcons=[name] has been installed. Open Settings and enroll your voice before using the Ctrl+Win dictation shortcut.
+FinishedLabel=[name] has been installed. Open Settings and enroll your voice before using the Ctrl+Win dictation shortcut.
 
 [Tasks]
 Name: "startup"; Description: "Start FlowLocal automatically when I sign in"; \
@@ -46,19 +46,6 @@ Name: "desktopicon"; Description: "Create a &desktop shortcut"; \
 [Files]
 ; Keep the executable payload in a replaceable directory so upgrades cannot retain removed files.
 Source: "..\artifacts\publish\win-x64\*"; DestDir: "{app}\app"; Flags: ignoreversion recursesubdirs createallsubdirs
-; Model URLs are revision-pinned and every download is SHA-256 verified.
-Source: "https://huggingface.co/handy-computer/nemotron-speech-streaming-en-0.6b-gguf/resolve/a5d84897102d97e3bd7bd60e9288187ec265c781/nemotron-speech-streaming-en-0.6b-Q4_K_M.gguf"; \
-    DestDir: "{localappdata}\FlowLocal\Models"; DestName: "nemotron-speech-streaming-en-0.6b-Q4_K_M.gguf"; ExternalSize: 475436032; \
-    Hash: "dc959ca31499b114e395c44eb4f0778968f20e5cfb03305a08a39925b2da8e1e"; \
-    Flags: external download ignoreversion; Check: Not NemotronModelPresent()
-Source: "https://huggingface.co/LiquidAI/LFM2.5-1.2B-Instruct-GGUF/resolve/6767265158422fb8a19c62ceb45f16f05363615b/LFM2.5-1.2B-Instruct-QAD-Q4_0.gguf"; \
-    DestDir: "{localappdata}\FlowLocal\Models"; DestName: "LFM2.5-1.2B-Instruct-QAD-Q4_0.gguf"; ExternalSize: 695755488; \
-    Hash: "bb741ebb106d543e9de114b843a3d3d73d51c74b5801e69da2abde821a0cb3e1"; \
-    Flags: external download ignoreversion; Check: Not CleanupModelPresent()
-Source: "https://huggingface.co/LiquidAI/LFM2.5-1.2B-Instruct-DSpark-GGUF/resolve/9235d674d3bbda8a775ca42a4275d11a8c0ab008/LFM2.5-1.2B-Instruct-DSpark-Q4_K_M.gguf"; \
-    DestDir: "{localappdata}\FlowLocal\Models"; DestName: "LFM2.5-1.2B-Instruct-DSpark-Q4_K_M.gguf"; ExternalSize: 175848992; \
-    Hash: "5cf9bb2947638dd74a47b486b817f407831c0da420aeebb6973fb66c25af51e4"; \
-    Flags: external download ignoreversion; Check: Not DsparkModelPresent()
 
 [InstallDelete]
 ; Atomically replace the complete executable payload on every repair or upgrade.
@@ -69,6 +56,9 @@ Type: files; Name: "{localappdata}\FlowLocal\Models\mumble-cleanup-2stage-q4_0.g
 Type: filesandordirs; Name: "{localappdata}\FlowLocal\Models\moonshine-streaming-medium"
 Type: filesandordirs; Name: "{localappdata}\FlowLocal\Models\canary-180m-flash-gguf"
 Type: files; Name: "{localappdata}\FlowLocal\Models\sotto-cleanup-lfm25-350m-q4_k_m.gguf"
+Type: files; Name: "{localappdata}\FlowLocal\Models\nemotron-speech-streaming-en-0.6b-Q4_K_M.gguf"
+Type: files; Name: "{localappdata}\FlowLocal\Models\LFM2.5-1.2B-Instruct-QAD-Q4_0.gguf"
+Type: files; Name: "{localappdata}\FlowLocal\Models\LFM2.5-1.2B-Instruct-DSpark-Q4_K_M.gguf"
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{localappdata}\FlowLocal"
@@ -86,33 +76,6 @@ Filename: "{app}\app\{#AppExeName}"; Description: "Launch {#AppName} now"; \
 Filename: "{app}\app\{#AppExeName}"; Flags: nowait skipifnotsilent
 
 [Code]
-const
-  UninstallKey = 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{C9329BA4-50BA-41F2-A88F-7A88223BEE9E}_is1';
-  NemotronModel = '{localappdata}\FlowLocal\Models\nemotron-speech-streaming-en-0.6b-Q4_K_M.gguf';
-  CleanupModel = '{localappdata}\FlowLocal\Models\LFM2.5-1.2B-Instruct-QAD-Q4_0.gguf';
-  DsparkModel = '{localappdata}\FlowLocal\Models\LFM2.5-1.2B-Instruct-DSpark-Q4_K_M.gguf';
-
-function FileHasSize(const Path: String; const ExpectedSize: Int64): Boolean;
-var
-  ActualSize: Int64;
-begin
-  Result := FileSize64(ExpandConstant(Path), ActualSize) and (ActualSize = ExpectedSize);
-end;
-
-function NemotronModelPresent(): Boolean;
-begin
-  Result := FileHasSize(NemotronModel, 475436032);
-end;
-
-function CleanupModelPresent(): Boolean;
-begin
-  Result := FileHasSize(CleanupModel, 695755488);
-end;
-
-function DsparkModelPresent(): Boolean;
-begin
-  Result := FileHasSize(DsparkModel, 175848992);
-end;
 
 function GetInstalledVersion(var Version: String): Boolean;
 begin

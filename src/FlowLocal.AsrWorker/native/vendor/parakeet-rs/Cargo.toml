@@ -1,0 +1,40 @@
+[package]
+name = "parakeet-rs"
+version = "0.3.8"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/altunenes/parakeet-rs"
+# Pinned upstream: a2efe5f74c2f69a0cfa924259a418a1ea45b95f9 (last Sortformer v2 revision).
+
+[dependencies]
+ort = { version = "=2.0.0-rc.13", default-features = false, features = ["std", "ndarray"] }
+hound = "3.5"
+eyre = "0.6"
+ndarray = "0.17"
+tokenizers = { version = "0.23.1", default-features = false, features = ["onig"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+realfft = "3"
+
+[features]
+default = ["cpu", "ort-defaults", "api-28"]
+cpu = []
+ort-defaults = ["ort/default"]
+api-24 = ["ort/api-24"]
+api-25 = ["ort/api-25"]
+api-26 = ["ort/api-26"]
+api-27 = ["ort/api-27"]
+api-28 = ["ort/api-28"]
+cuda = ["ort/cuda"]
+tensorrt = ["ort/tensorrt"]
+coreml = ["ort/coreml"]
+directml = ["ort/directml"]
+migraphx = ["ort/migraphx"]
+openvino = ["ort/openvino"]
+webgpu = ["ort/webgpu"]
+nnapi = ["ort/nnapi"]
+sortformer = []
+multitalker = ["sortformer"]
+cohere = []
+load-dynamic = ["ort/load-dynamic"]
+preload-dylibs = ["ort/preload-dylibs"]

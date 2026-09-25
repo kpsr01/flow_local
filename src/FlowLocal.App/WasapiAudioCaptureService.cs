@@ -20,6 +20,7 @@ public sealed class WasapiAudioCaptureService : IAudioCaptureService, IDisposabl
 
     public event EventHandler<AudioLevelEventArgs>? LevelChanged;
     public event EventHandler<string>? FellBackToDefaultDevice;
+    public bool IsCapturing { get { lock (_gate) return _delivery is not null; } }
 
     /// <summary>When true (default) every session captures the current Windows default recording endpoint.</summary>
     public bool FollowDefaultDevice { get; set; } = true;

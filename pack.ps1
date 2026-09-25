@@ -32,19 +32,6 @@ dotnet publish (Join-Path $root 'src\FlowLocal.App\FlowLocal.App.csproj') `
     -p:PublishSingleFile=false -p:PublishReadyToRun=false `
     -p:Version=$Version -o $publish
 if ($LASTEXITCODE) { throw "dotnet publish failed with exit code $LASTEXITCODE." }
-$llamaZip = Join-Path $env:TEMP 'flowlocal-llama-b10905.zip'
-$llamaDir = Join-Path $publish 'llama'
-try {
-    Invoke-WebRequest 'https://github.com/ggml-org/llama.cpp/releases/download/b10905/llama-b10905-bin-win-cpu-x64.zip' -OutFile $llamaZip
-    $llamaSha256 = (Get-FileHash $llamaZip -Algorithm SHA256).Hash.ToLowerInvariant()
-    if ($llamaSha256 -ne '469da0e5eb50445ab0c527745c34de4c1e5dd9d1c734a8bf66973d48c2be7621') {
-        throw "The downloaded llama.cpp runtime failed its integrity check."
-    }
-    Expand-Archive $llamaZip -DestinationPath $llamaDir -Force
-}
-finally {
-    Remove-Item $llamaZip -Force -ErrorAction SilentlyContinue
-}
 if ($PortableOnly) {
     Write-Host "Portable artifact published to $publish; installer build skipped."
     return

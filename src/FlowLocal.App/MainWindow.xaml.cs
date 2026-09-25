@@ -22,7 +22,6 @@ public enum HistoryAction
     CopyCleaned,
     Paste,
     RetryAsr,
-    RetryCleanup,
     RetryInsertion,
     Play,
     Export,
@@ -60,10 +59,11 @@ public partial class MainWindow : Window
     private AppSettingsStore? _appSettings;
     private GlobalShortcutService? _shortcut;
     private WasapiAudioCaptureService? _audio;
-    private CanaryAsrService? _asr;
-    private SottoTranscriptCleaner? _cleaner;
+    private MultitalkerAsrService? _asr;
     private Action<AppSettings>? _applyAppSettings;
     private IReadOnlyList<MicrophoneDeviceInfo> _microphones = [];
+    private CancellationTokenSource? _enrollmentCancellation;
+    public bool IsEnrolling => _enrollmentCancellation is not null;
 
     public MainWindow()
     {
@@ -158,15 +158,13 @@ public partial class MainWindow : Window
         AppSettingsStore appSettings,
         GlobalShortcutService shortcut,
         WasapiAudioCaptureService audio,
-        CanaryAsrService asr,
-        SottoTranscriptCleaner cleaner,
+        MultitalkerAsrService asr,
         Action<AppSettings> applyAppSettings)
     {
         _appSettings = appSettings ?? throw new ArgumentNullException(nameof(appSettings));
         _shortcut = shortcut ?? throw new ArgumentNullException(nameof(shortcut));
         _audio = audio ?? throw new ArgumentNullException(nameof(audio));
         _asr = asr ?? throw new ArgumentNullException(nameof(asr));
-        _cleaner = cleaner ?? throw new ArgumentNullException(nameof(cleaner));
         _applyAppSettings = applyAppSettings ?? throw new ArgumentNullException(nameof(applyAppSettings));
 
         var settings = await appSettings.LoadAsync();
@@ -327,14 +325,14 @@ public partial class MainWindow : Window
         VersionText.Text = (Assembly.GetEntryAssembly()?.GetCustomAttribute<AssemblyInformationalVersionAttribute>()
                 ?.InformationalVersion ?? Assembly.GetEntryAssembly()?.GetName().Version?.ToString()) ?? "—";
         RuntimeText.Text = $".NET {Environment.Version} — {Environment.OSVersion.VersionString}";
-        AsrModelText.Text = $"{CanaryAsrService.ModelName} (Nemotron GGUF · transcribe.cpp streaming CPU)";
+        AsrModelText.Text = $"{MultitalkerAsrService.ModelName} (Sortformer v2.1 · local ONNX CPU)";
         var status = _asr?.Status;
         AsrStateText.Text = status is null ? "—"
             : status.Provider is { Length: > 0 } provider ? $"{status.State} — {provider}" : status.State.ToString();
-        CleanupBackendText.Text = _cleaner is null ? "—" :
-            $"{_cleaner.DisplayName}{(_cleaner.IsLoaded ? $" — {_cleaner.ExecutionTarget}" : " — not loaded yet")}";
-        CleanupPathText.Text = SottoTranscriptCleaner.ConfiguredModelPath
-            ?? "Set FLOWLOCAL_CLEANUP_MODEL_PATH to a local QAD GGUF file.";
+        VoiceStateText.Text = _asr?.IsEnrolled == true ? "Voice enrolled" : "Enrollment required";
+        TranscriptModeText.Text = "Raw Multitalker transcript; cleanup disabled.";
+        if (_enrollmentCancellation is null)
+            EnrollmentStatusText.Text = _asr?.IsEnrolled == true ? "Voice enrolled locally" : "Not enrolled";
         if (_audio is not null && FollowDefaultMicCheckBox is not null)
         {
             MicModeText.Text = FollowDefaultMicCheckBox.IsChecked == true
@@ -342,6 +340,50 @@ public partial class MainWindow : Window
                 : MicDeviceComboBox.SelectedItem is MicrophoneDeviceInfo pinned ? $"Pinned: {pinned.Name}" : "Pinned device missing; falls back to default.";
         }
     }
+    private async void EnrollVoice_Click(object sender, RoutedEventArgs e)
+    {
+        if (_enrollmentCancellation is { } pending) { pending.Cancel(); return; }
+        if (_asr is null || _audio is null) return;
+        if (_audio.IsCapturing || _asr.IsSessionActive)
+        {
+            EnrollmentStatusText.Text = "Stop the current dictation before enrolling.";
+            return;
+        }
+        using var cancellation = new CancellationTokenSource();
+        _enrollmentCancellation = cancellation;
+        EnrollButton.Content = "Cancel enrollment";
+        var started = false;
+        var captured = false;
+        try
+        {
+            EnrollmentStatusText.Text = "Preparing local speaker model…";
+            await _asr.BeginEnrollmentAsync(cancellation.Token);
+            started = true;
+            await _audio.StartAsync(async (chunk, token) => await _asr.PushAudioAsync(chunk, token), cancellation.Token);
+            captured = true;
+            for (var second = 11; second > 0; second--)
+            {
+                EnrollmentStatusText.Text = $"Speak alone for {second} more seconds…";
+                await Task.Delay(1000, cancellation.Token);
+            }
+            await _audio.StopAsync(CancellationToken.None);
+            captured = false;
+            await _asr.FinishEnrollmentAsync(CancellationToken.None);
+            started = false;
+            RefreshRuntimeDiagnostics();
+            EnrollmentStatusText.Text = "Voice enrolled locally";
+        }
+        catch (OperationCanceledException) { EnrollmentStatusText.Text = "Enrollment cancelled"; }
+        catch (Exception ex) { EnrollmentStatusText.Text = $"Enrollment failed: {ex.Message}"; }
+        finally
+        {
+            if (captured) try { await _audio.StopAsync(CancellationToken.None); } catch { }
+            if (started) try { await _asr.CancelSessionAsync(CancellationToken.None); } catch { }
+            _enrollmentCancellation = null;
+            EnrollButton.Content = "Enroll my voice";
+        }
+    }
+
 
     public void ShowHistory(Guid? selectedId = null)
     {
@@ -655,7 +697,7 @@ public partial class MainWindow : Window
         chord is null || chord.Count == 0 ? "Ctrl+Win" : string.Join("+", chord);
 
     private static readonly RetentionOption[] RetentionOptions = [new("1 day", 1), new("7 days", 7), new("30 days", 30), new("90 days", 90), new("Forever", 0)];
-    private static string ActionLabel(HistoryAction action) => action switch { HistoryAction.RetryAsr => "Speech recognition retry", HistoryAction.RetryCleanup => "Cleanup retry", HistoryAction.RetryInsertion => "Insertion retry", HistoryAction.Play => "Playback", HistoryAction.Export => "Recording export", HistoryAction.OpenLocation => "Opening recording location", HistoryAction.Paste => "Paste", HistoryAction.Delete => "Delete", _ => "Copy" };
+    private static string ActionLabel(HistoryAction action) => action switch { HistoryAction.RetryAsr => "Speech recognition retry", HistoryAction.RetryInsertion => "Insertion retry", HistoryAction.Play => "Playback", HistoryAction.Export => "Recording export", HistoryAction.OpenLocation => "Opening recording location", HistoryAction.Paste => "Paste", HistoryAction.Delete => "Delete", _ => "Copy" };
     private static string Format(TimeSpan? value) => value is null ? "—" : value.Value.TotalSeconds < 1 ? $"{value.Value.TotalMilliseconds:0} ms" : $"{value.Value.TotalSeconds:0.0} s";
     private static Dictionary<string, OutputStyleOverride> Copy(IReadOnlyDictionary<string, OutputStyleOverride>? values) => values is null ? new(StringComparer.OrdinalIgnoreCase) : new(values, StringComparer.OrdinalIgnoreCase);
     private static string NormalizeExecutable(string value) => value.Trim().ToLowerInvariant() is { Length: > 0 } executable ? executable.EndsWith(".exe", StringComparison.Ordinal) ? executable : executable + ".exe" : "";

@@ -2,34 +2,11 @@
 
 ## Initialization overlay reports a failure
 
-FlowLocal enables dictation only after history, the Nemotron speech worker, and the LFM2.5 cleanup server initialize. Read the full overlay message, correct the named prerequisite, then exit from the tray menu and restart; the current UI has no general initialization retry command.
+FlowLocal initializes local history and the resident Multitalker/Sortformer/ECAPA worker before enabling dictation. First startup downloads ONNX assets from Hugging Face into `%LOCALAPPDATA%\FlowLocal\Models`; set `FLOWLOCAL_MODELS_DIR` before launch to use another directory. Confirm network access and enough disk space, then restart after a download or model-load error. Source builds also need Rust/Cargo to produce `flowlocal-asr-native.exe`.
 
-### Speech model is missing or not ready
+If the model starts but dictation is refused, open **System status → Your voice** and enroll with at least eight seconds of audible solo speech. The voice embedding is stored at `%LOCALAPPDATA%\FlowLocal\user-embedding.json`. Re-enroll if your microphone or speaking conditions change. Short/noisy/overlapping speech can yield no confident match and therefore no insertion; it is not recovered by transcript cleanup. The WAV remains available in History for recognition retry.
 
-- Confirm the machine is online for the first model download, or that `%LOCALAPPDATA%\FlowLocal\Models\nemotron-speech-streaming-en-0.6b-Q4_K_M.gguf` exists.
-- If a download was interrupted, delete the `.download` partial file and restart FlowLocal so the worker fetches it again.
-- Ensure the Windows account can write to `%LOCALAPPDATA%\FlowLocal\Models`. FlowLocal owns that directory.
-- First initialization loads the GGUF and runs a streaming warm-up inference and can take a few seconds on some machines.
-
-### “Set FLOWLOCAL_CLEANUP_MODEL_PATH…” or cleanup model not found
-
-Check the variable in the same account/environment used to launch FlowLocal:
-
-```powershell
-[Environment]::GetEnvironmentVariable("FLOWLOCAL_CLEANUP_MODEL_PATH", "User")
-Test-Path $env:FLOWLOCAL_CLEANUP_MODEL_PATH
-```
-
-If the variable is unset, FlowLocal looks for `LFM2.5-1.2B-Instruct-QAD-Q4_0.gguf` in `%LOCALAPPDATA%\FlowLocal\Models`. `FLOWLOCAL_CLEANUP_DSPARK=1` additionally requires `LFM2.5-1.2B-Instruct-DSpark-Q4_K_M.gguf`; `FLOWLOCAL_LLAMA_SERVER_PATH` overrides the packaged/source `llama-server.exe`. Each value must be a full path to one readable file, not a directory.
-
-### Cleanup model fails to load
-
-The target GGUF or llama.cpp runtime may be incomplete or incompatible, or too large for available memory. Confirm `llama-server.exe` exists beside the packaged app or set `FLOWLOCAL_LLAMA_SERVER_PATH`; confirm the QAD GGUF and, when enabled, the DSpark sidecar exist. The server uses CPU inference by default and the Settings diagnostics show the active execution target.
-For production timing evidence, read `%LOCALAPPDATA%\FlowLocal\pipeline-metrics.log`. It contains ASR, cleanup, and lifecycle metrics only; transcript and audio content are not written there.
-
-### Speech recognition fails or the app previously crashed while transcribing
-
-All Nemotron model code runs in the separate `FlowLocal.AsrWorker.exe` process. If recognition stalls, the worker is terminated and respawned automatically, and the dictation fails with a typed error while keeping the saved recording for retry. If every session still reports `AsrFailed`, confirm the Nemotron GGUF exists and verify a microphone is capturing (Settings > Microphone).
+For local timing diagnostics inspect `%LOCALAPPDATA%\FlowLocal\pipeline-metrics.log`. Logs exclude transcript and audio contents.
 
 ## Microphone problems
 
@@ -68,16 +45,12 @@ Use **Settings > Application styles > Test current target** while the desired te
 
 If `%LOCALAPPDATA%\FlowLocal\application-styles.json` is malformed or unreadable, FlowLocal silently activates defaults and displays a settings diagnostic. Correct it while FlowLocal is closed or reset/save from Settings.
 
-## Cleanup output is unchanged or unsuitable
-
-If the cleanup model throws or its output fails validation, FlowLocal retries once and then inserts the raw ASR transcript while recording `CleanupFailed`. This is deliberate data-preserving fallback, not proof that cleanup succeeded. Inspect the History entry's raw/cleaned text and error, confirm the correct target classification, and verify the configured GGUF. The cleanup model is constrained to transcript cleanup; it is not intended to answer or execute dictated prompts.
-
 ## Text is not inserted
 
 Keep the original target field available until processing completes. FlowLocal restores and revalidates the captured target before inserting.
 
 - Click a writable, non-password text field before holding the shortcut.
-- Do not close, recreate, navigate away from, or elevate the target during transcription/cleanup.
+- Do not close, recreate, navigate away from, or elevate the target during transcription.
 - Password fields, read-only controls, stale/mismatched focused elements, and higher/unknown-integrity targets are blocked.
 - If automatic methods are unsafe or fail, the overlay/history may report clipboard-only fallback. Paste manually with Ctrl+V; FlowLocal must not claim that fallback inserted text.
 - Terminal text is inserted but Enter is never sent; commands remain unexecuted.
@@ -104,6 +77,6 @@ dotnet build .\FlowLocal.slnx -c Release
 dotnet test .\FlowLocal.slnx -c Release
 ```
 
-The projects target Windows SDK build `10.0.26100.0`. If reference packs cannot be restored, verify NuGet access and that the .NET SDK can acquire that Windows targeting pack. Runtime/model failures are not fixed by the automated tests; follow the prerequisite checks above.
+The projects target Windows SDK build `10.0.26100.0`. If reference packs cannot be restored, verify NuGet access; if the native worker fails to build, confirm Cargo is installed and on `PATH`. Automated tests do not prove microphone or biometric reliability.
 
 For manual target behavior use the [compatibility checklist](manual-compatibility.md). For latency/resource investigation use the [performance procedure](performance-measurements.md); both currently contain `UNVERIFIED` result fields and must not be quoted as successful runs.

@@ -14,8 +14,6 @@ public sealed class DictationController : IDisposable
     private readonly IStyleOverrideStore _styleOverrides;
     private readonly IAudioCaptureService _audio;
     private readonly IAsrService _asr;
-    private readonly ITranscriptCleaner _cleaner;
-    private readonly ICleanupBackend _cleanupBackend;
     private readonly ITextInsertionService _insertion;
     private readonly OverlayWindow _overlay;
     private readonly IHistoryRepository? _history;
@@ -61,7 +59,6 @@ public sealed class DictationController : IDisposable
         RecordingStateMachine stateMachine, IActiveTargetTracker targets,
         IApplicationContextDetector contextDetector, IOutputStyleClassifier styleClassifier,
         IStyleOverrideStore styleOverrides, IAudioCaptureService audio, IAsrService asr,
-        ITranscriptCleaner cleaner, ICleanupBackend cleanupBackend,
         ITextInsertionService insertion, OverlayWindow overlay, ILogger<DictationController> logger,
         IHistoryRepository? history = null, string? asrModelName = null)
     {
@@ -72,8 +69,6 @@ public sealed class DictationController : IDisposable
         _styleOverrides = styleOverrides;
         _audio = audio;
         _asr = asr;
-        _cleaner = cleaner;
-        _cleanupBackend = cleanupBackend;
         _insertion = insertion;
         _overlay = overlay;
         _history = history;
@@ -153,9 +148,6 @@ public sealed class DictationController : IDisposable
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
         await _asr.InitializeAsync(cancellationToken);
-        var availability = await _cleanupBackend.CheckAvailabilityAsync(cancellationToken);
-        if (!availability.IsAvailable)
-            throw new InvalidOperationException(availability.UnavailableReason ?? "Transcript cleanup is unavailable.");
     }
 
     public async Task HoldAsync()
@@ -206,7 +198,7 @@ public sealed class DictationController : IDisposable
                 CurrentContext?.DisplayName ?? _target?.ExecutableName,
                 CurrentContext?.ExecutableName ?? _target?.ExecutableName,
                 CurrentContext?.Domain, CurrentClassification?.Category, _style,
-                _asrModelName, _cleanupBackend.DisplayName, null, null, null, null, null,
+                _asrModelName, null, null, null, null, null, null,
                 RecordingState.Starting, CodingTarget: CurrentCodingTarget);
             if (_history is not null) await _history.CreateAsync(_entry, CancellationToken.None);
             LogLifecycle(_entry);
@@ -280,7 +272,7 @@ public sealed class DictationController : IDisposable
             }
             var raw = new RawTranscript(transcription.Text);
             if (string.IsNullOrWhiteSpace(raw.Text)) throw new InvalidOperationException("Speech recognition returned an empty transcript.");
-            if (_asr is CanaryAsrService canary && canary.LastMetrics is { } asrMetrics)
+            if (_asr is MultitalkerAsrService multitalker && multitalker.LastMetrics is { } asrMetrics)
                 _logger.LogInformation(
                     "ASR metrics: audio={AudioMs}ms finalize={FinalizeMs:F1}ms processing={ProcessingMs:F1}ms partials={PartialCount} firstPartialAudio={FirstPartialAudioMs}ms",
                     asrMetrics.AudioMilliseconds, asrMetrics.FinalizeMilliseconds, asrMetrics.ProcessingMilliseconds,
@@ -288,25 +280,7 @@ public sealed class DictationController : IDisposable
             await SaveAsync(_entry with { RawTranscript = raw.Text, AsrDuration = Stopwatch.GetElapsedTime(step), RetryCount = retries, State = RecordingState.Transcribing }, token);
             LogLifecycle(_entry);
 
-            _stateMachine.TransitionTo(RecordingState.Cleaning);
-            await _overlay.Dispatcher.InvokeAsync(_overlay.ShowCleaning);
-            step = Stopwatch.GetTimestamp();
-            var (cleaned, usedFallback) = await CleanWithFallbackStatusAsync(_cleaner, raw, _style, CurrentCodingTarget, token);
-            await SaveAsync(_entry with
-            {
-                CleanedTranscript = cleaned.Text,
-                CleanupDuration = Stopwatch.GetElapsedTime(step),
-                State = RecordingState.Cleaning,
-                ErrorCode = usedFallback ? DictationErrorCode.CleanupFailed : DictationErrorCode.None
-            }, token);
-            LogLifecycle(_entry);
-            if (_cleaner is SottoTranscriptCleaner cleaner && cleaner.LastMetrics is { } cleanupMetrics)
-                _logger.LogInformation(
-                    "Cleanup metrics: inputTokens={InputTokens} outputTokens={OutputTokens} ttft={TtftMs}ms decode={DecodeMs}ms tokPerSecond={TokPerSecond} draft={DraftTokens}/{DraftAcceptedTokens} complete={CompleteMs:F1}ms dspark={Dspark}",
-                    cleanupMetrics.InputTokens, cleanupMetrics.OutputTokens, cleanupMetrics.TimeToFirstTokenMilliseconds,
-                    cleanupMetrics.DecodeMilliseconds, cleanupMetrics.DecodeTokensPerSecond,
-                    cleanupMetrics.DraftTokens, cleanupMetrics.DraftAcceptedTokens,
-                    cleanupMetrics.CompleteMilliseconds, cleanupMetrics.DsparkEnabled);
+            // Raw speaker-conditioned output goes directly to the insertion path.
 
             if (_target is null || !await _targets.RestoreAndValidateAsync(_target, token))
             {
@@ -317,7 +291,7 @@ public sealed class DictationController : IDisposable
             _stateMachine.TransitionTo(RecordingState.Inserting);
             await _overlay.Dispatcher.InvokeAsync(_overlay.ShowInserting);
             step = Stopwatch.GetTimestamp();
-            var result = await _insertion.InsertAsync(_target, cleaned.Text, token);
+            var result = await _insertion.InsertAsync(_target, raw.Text, token);
             await SaveAsync(_entry with { InsertionDuration = Stopwatch.GetElapsedTime(step), InsertionMethod = result.Method, State = RecordingState.Inserting }, token);
             LogLifecycle(_entry);
             if (!result.Succeeded || result.Method == TextInsertionMethod.ClipboardOnly)
@@ -369,27 +343,6 @@ public sealed class DictationController : IDisposable
         finally { _lifecycle.Release(); }
     }
 
-    internal static async Task<CleanTranscriptResult> CleanWithFallbackAsync(ITranscriptCleaner cleaner, RawTranscript raw, TranscriptStyle style, CancellationToken token) =>
-        (await CleanWithFallbackStatusAsync(cleaner, raw, style, null, token)).Result;
-
-    internal static async Task<(CleanTranscriptResult Result, bool UsedFallback)> CleanWithFallbackStatusAsync(
-        ITranscriptCleaner cleaner, RawTranscript raw, TranscriptStyle style, CodingTarget? codingTarget, CancellationToken token)
-    {
-        if (string.IsNullOrWhiteSpace(raw.Text)) throw new InvalidOperationException("Speech recognition returned an empty transcript.");
-        try
-        {
-            var cleaned = codingTarget is not null && cleaner is SottoTranscriptCleaner resident
-                ? await resident.CleanCodingAsync(raw, style, codingTarget, PromptPolicyRegistry.Default.Get(codingTarget), token)
-                : await cleaner.CleanAsync(raw, style, token);
-            if (CleanupResultValidator.TryValidate(raw, cleaned, out _) &&
-                (codingTarget is null || CodingCleanupValidator.PreservesSubstantiveWords(raw, cleaned)))
-                return (cleaned, false);
-        }
-        catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
-        // Deterministic retries repeat invalid output and double the insertion delay.
-        catch { }
-        return (new CleanTranscriptResult(raw.Text), true);
-    }
 
     private async Task ApplyCodingContextAsync(
         ActiveTarget target, int sessionGeneration, CancellationToken cancellationToken)

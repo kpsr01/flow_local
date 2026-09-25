@@ -9,26 +9,6 @@ namespace FlowLocal.Core.Tests;
 public sealed class DictationStyleIntegrationTests
 {
     [Fact]
-    public Task DetectionFailure_ContinuesRecordingAndCleansWithGeneralStyle() => RunStaAsync(async () =>
-    {
-        var cleaner = new CapturingCleaner();
-        using var fixture = new ControllerFixture(
-            new ThrowingDetector(),
-            new CapturingClassifier(),
-            new MutableStore(new OutputStyleSettings()),
-            cleaner);
-
-        await fixture.Controller.HoldAsync();
-        Assert.Equal(RecordingState.ListeningPushToTalk, fixture.State.State);
-        Assert.Null(fixture.Controller.CurrentContext);
-        Assert.Equal(OutputContextCategory.General, fixture.Controller.CurrentClassification!.Category);
-
-        await fixture.Controller.ReleaseAsync();
-        Assert.Equal(TranscriptStyleResolver.Resolve(OutputContextCategory.General), cleaner.Style);
-        Assert.Equal(1, cleaner.Calls);
-    });
-
-    [Fact]
     public Task WebsiteDetectionDisabled_BypassesBrowserProbeAndRetainsApplicationClassification() => RunStaAsync(async () =>
     {
         var detector = new FakeDetector(Context(null));
@@ -36,8 +16,7 @@ public sealed class DictationStyleIntegrationTests
         using var fixture = new ControllerFixture(
             detector,
             classifier,
-            new MutableStore(new OutputStyleSettings(WebsiteDetectionEnabled: false)),
-            new CapturingCleaner());
+            new MutableStore(new OutputStyleSettings(WebsiteDetectionEnabled: false)));
 
         await fixture.Controller.HoldAsync();
 
@@ -49,35 +28,6 @@ public sealed class DictationStyleIntegrationTests
         await fixture.Controller.CancelAsync();
     });
 
-    [Fact]
-    public Task RecordingStartStyle_ReachesCleanerUnchangedWhenSettingsLaterChange() => RunStaAsync(async () =>
-    {
-        var firstStyle = new TranscriptStyle("Session style", "Direct", "Bullets", EnableLists: true);
-        var laterStyle = TranscriptStyleResolver.Resolve(OutputContextCategory.Email);
-        var store = new MutableStore(new OutputStyleSettings(
-            UniversalDefaultCategory: OutputContextCategory.Terminal,
-            UniversalDefaultStyle: firstStyle));
-        var classifier = new CapturingClassifier((_, settings) => new OutputClassification(
-            settings.UniversalDefaultCategory,
-            settings.UniversalDefaultStyle!,
-            ClassificationSource.General,
-            "test",
-            new ContextDetectionDiagnostic(ContextDetectionConfidence.High, "test")));
-        var cleaner = new CapturingCleaner();
-        using var fixture = new ControllerFixture(new FakeDetector(Context(null)), classifier, store, cleaner);
-
-        await fixture.Controller.HoldAsync();
-        var classificationAtStart = fixture.Controller.CurrentClassification;
-        store.Settings = new OutputStyleSettings(
-            UniversalDefaultCategory: OutputContextCategory.Email,
-            UniversalDefaultStyle: laterStyle);
-
-        await fixture.Controller.ReleaseAsync();
-
-        Assert.Same(firstStyle, cleaner.Style);
-        Assert.Same(firstStyle, classificationAtStart!.Style);
-        Assert.Equal(1, store.LoadCalls);
-    });
 
     private static ApplicationContext Context(string? domain) => new(
         "chrome", "Google Chrome", "title", "Document", true, BrowserIdentity.Chrome,
@@ -133,8 +83,7 @@ public sealed class DictationStyleIntegrationTests
         public ControllerFixture(
             IApplicationContextDetector detector,
             IOutputStyleClassifier classifier,
-            IStyleOverrideStore store,
-            ITranscriptCleaner cleaner)
+            IStyleOverrideStore store)
         {
             Controller = new DictationController(
                 State,
@@ -144,8 +93,6 @@ public sealed class DictationStyleIntegrationTests
                 store,
                 new FakeAudio(),
                 new FakeAsr(),
-                cleaner,
-                new FakeBackend(),
                 new FakeInsertion(),
                 overlay,
                 NullLogger<DictationController>.Instance);
@@ -221,18 +168,6 @@ public sealed class DictationStyleIntegrationTests
         }
     }
 
-    private sealed class CapturingCleaner : ITranscriptCleaner
-    {
-        public TranscriptStyle? Style { get; private set; }
-        public int Calls { get; private set; }
-        public Task<CleanTranscriptResult> CleanAsync(RawTranscript transcript, TranscriptStyle style, CancellationToken cancellationToken)
-        {
-            Calls++;
-            Style = style;
-            return Task.FromResult(new CleanTranscriptResult(transcript.Text));
-        }
-    }
-
     private sealed class FakeAudio : IAudioCaptureService
     {
         public Task StartAsync(Func<ReadOnlyMemory<byte>, CancellationToken, ValueTask> onAudio, CancellationToken cancellationToken) => Task.CompletedTask;
@@ -246,13 +181,6 @@ public sealed class DictationStyleIntegrationTests
         public Task PushAudioAsync(ReadOnlyMemory<byte> pcmAudio, CancellationToken cancellationToken) => Task.CompletedTask;
         public Task<AsrResult> CompleteSessionAsync(CancellationToken cancellationToken) => Task.FromResult(new AsrResult("raw transcript"));
         public Task CancelSessionAsync(CancellationToken cancellationToken) => Task.CompletedTask;
-    }
-
-    private sealed class FakeBackend : ICleanupBackend
-    {
-        public string BackendId => "fake";
-        public string DisplayName => "Fake";
-        public Task<BackendAvailability> CheckAvailabilityAsync(CancellationToken cancellationToken) => Task.FromResult(new BackendAvailability(true));
     }
 
     private sealed class FakeInsertion : ITextInsertionService
